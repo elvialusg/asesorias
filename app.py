@@ -539,7 +539,7 @@ with tab1:
 
         aprob_sim = st.selectbox("Aprobación similitud", lists.get("Aprobados PyS", [""]), key="aprob_sim")
         obs = st.text_area("Observaciones", height=120, key="obs")
-        paz_y_salvo = st.selectbox("Estudiante apto para paz y salvo", ["EN PROCESO", "SI", "NO"], index=0, key="paz_y_salvo")
+        paz_y_salvo = st.selectbox("Estudiante apto para paz y salvo", ["En proceso", "Si", "No"], index=0, key="paz_y_salvo")
 
         # principal
         principal = asesorias_payload[0] if asesorias_payload else {}
