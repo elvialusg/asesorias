@@ -11,12 +11,19 @@
 
 import io
 import os
-from datetime import date
+from datetime import date, datetime
 import pandas as pd
 import streamlit as st
 import openpyxl
 
+from drive_uploader import DriveUploader
+
 st.set_page_config(page_title="Tablero Asesorías (Tesis)", layout="wide")
+try:
+    drive_uploader = DriveUploader.from_streamlit_secrets(getattr(st, "secrets", None))
+except Exception:
+    drive_uploader = DriveUploader(None, None)
+
 
 BASE_DIR = os.path.dirname(__file__)
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -754,6 +761,22 @@ with tab2:
         file_name="registro_asesorias_actual.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key="dl_current_excel",
+    if drive_uploader.is_configured:
+        if st.button("????? Guardar Excel en Google Drive", key="btn_drive_upload"):
+            try:
+                payload = download_current_excel_bytes()
+                fname = f"registro_asesorias_{datetime.now().strftime('%Y%m%d_%H%M%S')}" + ".xlsx"
+                upload_info = drive_uploader.upload_excel(payload, fname)
+                link = upload_info.get("webViewLink") or upload_info.get("webContentLink") or upload_info.get("id")
+                st.success(f"Archivo guardado en Drive: {link}")
+            except Exception as exc:
+                st.error(f"No se pudo subir el Excel a Drive: {exc}")
+    else:
+        st.info(
+            "Configura las credenciales de Google Drive en `.streamlit/secrets.toml` (clave `gcp_service_account`) "
+            "o con la variable `GCP_SERVICE_ACCOUNT_FILE` para habilitar el guardado autom?tico.",
+            icon="??",
+        )
     )
     st.markdown("</div>", unsafe_allow_html=True)
 
