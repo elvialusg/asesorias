@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
+from asesorias_app import config
 from asesorias_app.core.utils import (
     append_pipe,
     join_hist,
@@ -17,6 +18,7 @@ from asesorias_app.core.utils import (
     split_hist,
 )
 from asesorias_app.repositories.excel_repository import ExcelRepository
+from asesorias_app.repositories.google_sheets_repository import GoogleSheetsRepository
 
 
 EXTRA_COLS = [
@@ -31,7 +33,12 @@ EXTRA_COLS = [
 
 class RegistroService:
     def __init__(self, repository: Optional[ExcelRepository] = None) -> None:
-        self.repo = repository or ExcelRepository()
+        if repository is not None:
+            self.repo = repository
+        elif config.GOOGLE_SHEETS_SPREADSHEET_ID:
+            self.repo = GoogleSheetsRepository()
+        else:
+            self.repo = ExcelRepository()
 
     # Helpers --------------------------------------------------------------
     def load_lists(self):
