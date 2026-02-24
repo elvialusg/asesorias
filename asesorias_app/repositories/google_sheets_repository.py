@@ -29,14 +29,20 @@ class GoogleSheetsRepository(ExcelRepository):
         self.registro_range = registro_range or config.GOOGLE_SHEETS_REGISTRO_RANGE
         if not self.spreadsheet_id:
             raise ValueError("GOOGLE_SHEETS_SPREADSHEET_ID no está configurado.")
-        if not self.credentials_file.exists():
-            raise FileNotFoundError(f"No se encuentra la credencial: {self.credentials_file}")
 
     def _sheets_service(self):
-        creds = service_account.Credentials.from_service_account_file(
-            str(self.credentials_file),
-            scopes=config.GOOGLE_SHEETS_SCOPES,
-        )
+        if config.SERVICE_ACCOUNT_INFO:
+            creds = service_account.Credentials.from_service_account_info(
+                config.SERVICE_ACCOUNT_INFO,
+                scopes=config.GOOGLE_SHEETS_SCOPES,
+            )
+        else:
+            if not self.credentials_file.exists():
+                raise FileNotFoundError(f"No se encuentra la credencial: {self.credentials_file}")
+            creds = service_account.Credentials.from_service_account_file(
+                str(self.credentials_file),
+                scopes=config.GOOGLE_SHEETS_SCOPES,
+            )
         return build("sheets", "v4", credentials=creds, cache_discovery=False)
 
     # Registro principal -------------------------------------------------

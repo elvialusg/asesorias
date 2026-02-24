@@ -15,6 +15,15 @@ from asesorias_app.services.registro_service import RegistroService
 from asesorias_app.ui.theme import load_theme
 
 
+def _streamlit_rerun() -> None:
+    """Compatibilidad entre versiones nuevas y antiguas de Streamlit."""
+    rerun = getattr(st, "rerun", None)
+    if callable(rerun):
+        rerun()
+    else:  # fallback para versiones anteriores
+        _streamlit_rerun()
+
+
 def _all_widget_keys() -> List[str]:
     base = [
         "facultad",
@@ -278,7 +287,7 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                             service.add_registro(base_row, asesorias_payload)
                             st.success("Registro guardado.")
                             st.session_state["reset_pending"] = True
-                            st.experimental_rerun()
+                            _streamlit_rerun()
                         except ValueError as exc:
                             st.warning(str(exc))
             with col_btn2:
@@ -290,7 +299,7 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                             service.update_registro(base_row, asesorias_payload)
                             st.success("Registro actualizado.")
                             st.session_state["reset_pending"] = True
-                            st.experimental_rerun()
+                            _streamlit_rerun()
                         except ValueError as exc:
                             st.warning(str(exc))
 
@@ -391,7 +400,7 @@ def _tab_consulta(tab, service: RegistroService):
                     df_all.loc[sel_idx] = updated
                     service.save_registro(df_all)
                     st.success("Asesoría eliminada.")
-                    st.experimental_rerun()
+                    _streamlit_rerun()
 
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
@@ -424,7 +433,7 @@ def _tab_consulta(tab, service: RegistroService):
             if st.button("Eliminar registro seleccionado", type="primary", disabled=not confirm):
                 service.delete_registro(idx_to_delete)
                 st.success("Registro eliminado correctamente.")
-                st.experimental_rerun()
+                _streamlit_rerun()
 
         st.divider()
         st.markdown("### ⬇️ Descargar Excel actual")
@@ -459,7 +468,7 @@ def _tab_masivo(tab, service: RegistroService):
                 if st.button("Importar / Actualizar", type="primary", key="btn_bulk_import"):
                     service.bulk_import(df_up)
                     st.success("Importación completada.")
-                    st.experimental_rerun()
+                    _streamlit_rerun()
             except Exception as exc:
                 st.error(f"No se pudo leer/importar el archivo: {exc}")
         st.markdown("</div>", unsafe_allow_html=True)
