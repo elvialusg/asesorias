@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -16,3 +17,19 @@ SHEET_LISTAS = "Insumo_Listas_Desplegables"
 
 ASSETS_DIR = BASE_DIR / "assets"
 THEME_CSS = ASSETS_DIR / "styles.css"
+
+_DEFAULT_SERVICE_ACCOUNT = BASE_DIR / "asesorias-488318-60432dd8ea86.json"
+# Permite sobreescribir la ubicación mediante la variable de entorno
+# GOOGLE_APPLICATION_CREDENTIALS cuando se despliega en la nube.
+SERVICE_ACCOUNT_FILE = Path(
+    os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", _DEFAULT_SERVICE_ACCOUNT)
+)
+
+GOOGLE_SHEETS_SPREADSHEET_ID = os.environ.get("GOOGLE_SHEETS_SPREADSHEET_ID", "")
+GOOGLE_SHEETS_REGISTRO_RANGE = os.environ.get(
+    "GOOGLE_SHEETS_REGISTRO_RANGE", f"{SHEET_REGISTRO}!A:ZZ"
+)
+GOOGLE_SHEETS_SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
