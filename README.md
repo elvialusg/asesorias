@@ -47,3 +47,12 @@ La app funciona en Streamlit Community Cloud o cualquier plataforma que soporte 
 - `app.py`, `requirements.txt`, `.streamlit/config.toml`, `assets/styles.css`.
 
 > Si necesitas persistencia más robusta considera migrar a una BD (PostgreSQL/SQLite). El repositorio actual sigue utilizando Excel como almacenamiento principal.
+## Credenciales de Google Sheets
+
+Guarda el archivo sesorias-488318-60432dd8ea86.json (cuenta de servicio) en la raíz del proyecto.
+Por defecto la app usará esa ruta (SERVICE_ACCOUNT_FILE en sesorias_app/config.py), pero puedes
+sobrescribirla definiendo la variable de entorno GOOGLE_APPLICATION_CREDENTIALS apuntando al JSON
+en tu entorno de despliegue. Asegúrate de compartir la hoja de cálculo con el correo de la cuenta de
+servicio para que tenga permisos de lectura/escritura.
+Configura la variable de entorno GOOGLE_SHEETS_SPREADSHEET_ID con el ID de la hoja en Drive.
+Opcionalmente puedes ajustar GOOGLE_SHEETS_REGISTRO_RANGE si el rango de datos no es Registro asesorías!A:ZZ.
