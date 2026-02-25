@@ -17,7 +17,7 @@ from asesorias_app.ui.theme import load_theme
 STATUS_OPTIONS = ["SI", "NO", "EN PROCESO"]
 STATUS_LABELS = {"SI": "Si", "NO": "No", "EN PROCESO": "En proceso"}
 PAZ_OPTIONS = ["EN PROCESO", "SI", "NO"]
-PAZ_LABELS = {"EN PROCESO": "en proceso", "SI": "sí", "NO": "no"}
+PAZ_LABELS = {"EN PROCESO": "En proceso", "SI": "Sí", "NO": "No"}
 
 
 def _streamlit_rerun() -> None:
