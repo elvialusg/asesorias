@@ -90,7 +90,7 @@
 .card .stRadio label,
 .card .stCheckbox label,
 .card > div > label {
-  color: var(--text-light) !important;
+   color: white !important;
   font-weight: 700;
   font-size: 1.15rem;
   letter-spacing: 0.02em;
