@@ -337,12 +337,21 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
 
         with colB:
             st.subheader("Vista rápida")
-            df_latest = service.load_registro()
-            st.caption("Últimos 15 registros")
-            show = df_latest.copy()
-            if "Fecha" in show.columns:
-                show["Fecha"] = pd.to_datetime(show["Fecha"], errors="coerce")
-            st.dataframe(show.sort_values("Fecha", ascending=False).head(15), use_container_width=True)
+            if st.button("👁️ Ver últimos 15 registros", key="open_quick_view"):
+                st.session_state["quick_view_modal"] = True
+            if st.session_state.get("quick_view_modal", False):
+                df_latest = service.load_registro()
+                show = df_latest.copy()
+                if "Fecha" in show.columns:
+                    show["Fecha"] = pd.to_datetime(show["Fecha"], errors="coerce")
+                with st.modal("Vista rápida de registros", key="modal_quick_view"):
+                    st.caption("Últimos 15 registros")
+                    st.dataframe(
+                        show.sort_values("Fecha", ascending=False).head(15),
+                        use_container_width=True,
+                    )
+                    if st.button("Cerrar", key="close_quick_view"):
+                        st.session_state["quick_view_modal"] = False
         st.markdown("</div>", unsafe_allow_html=True)
 
 
