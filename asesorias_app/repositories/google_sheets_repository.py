@@ -11,7 +11,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 from asesorias_app import config
-from asesorias_app.repositories.excel_repository import ExcelRepository
+from asesorias_app.repositories.excel_repository import ExcelRepository, normalize_registro_df
 
 
 class GoogleSheetsRepository(ExcelRepository):
@@ -56,20 +56,23 @@ class GoogleSheetsRepository(ExcelRepository):
         )
         values = result.get("values", [])
         if not values:
-            return pd.DataFrame(columns=[])
-        headers = values[0]
-        rows = values[1:]
-        normalized_rows: List[List[str]] = []
-        for row in rows:
-            filled = row + [""] * (len(headers) - len(row))
-            normalized_rows.append(filled)
-        df = pd.DataFrame(normalized_rows, columns=headers)
+            df = pd.DataFrame(columns=[])
+        else:
+            headers = values[0]
+            rows = values[1:]
+            normalized_rows: List[List[str]] = []
+            for row in rows:
+                filled = row + [""] * (len(headers) - len(row))
+                normalized_rows.append(filled)
+            df = pd.DataFrame(normalized_rows, columns=headers)
+        df = normalize_registro_df(df)
         if "Fecha" in df.columns:
             df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
         return df
 
     def save_registro(self, df: pd.DataFrame) -> None:
         df = df.copy()
+        df = normalize_registro_df(df)
         df = df.where(pd.notnull(df), "")
         payload = [list(df.columns)]
         for _, row in df.iterrows():
