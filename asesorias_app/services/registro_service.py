@@ -234,7 +234,10 @@ class RegistroService:
                     base_row[col] = row.get(col)
 
             base_row["Paz_y_Salvo"] = norm_str(row.get("Paz_y_Salvo")) or "EN PROCESO"
-            base_row["Fecha"] = pd.to_datetime(row.get("Fecha"), errors="coerce")
+            fecha_val = pd.to_datetime(row.get("Fecha"), errors="coerce")
+            if pd.isna(fecha_val):
+                fecha_val = pd.Timestamp(date.today())
+            base_row["Fecha"] = fecha_val
 
             detalle = build_detalle_asesor(row.get("Asesor_Metodológico"), row.get("Modalidad_Asesoría2"))
             asesoria_payload = [
