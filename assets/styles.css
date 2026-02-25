@@ -4,7 +4,7 @@
   --accent: #bde94d;
   --accent-dark: #9ac629;
   --text-light: #f5f7fb;
-  --muted: #f5f7fb;
+  --muted: #94a3b8;
   --card-bg: rgba(255, 255, 255, 0.97);
   --border: rgba(255, 255, 255, 0.08);
   --shadow: 0 25px 45px rgba(5, 18, 24, 0.35);
@@ -94,6 +94,11 @@
   font-weight: 700;
   font-size: 1.15rem;
   letter-spacing: 0.02em;
+}
+
+/* 🔥 NUEVO BLOQUE */
+label {
+  color: white !important;
 }
 
 .card input,
