@@ -14,14 +14,23 @@ from asesorias_app.core import utils
 from asesorias_app.services.registro_service import RegistroService
 from asesorias_app.ui.theme import load_theme
 
+STATUS_OPTIONS = ["SI", "NO", "EN PROCESO"]
+STATUS_LABELS = {"SI": "Si", "NO": "No", "EN PROCESO": "En proceso"}
+PAZ_OPTIONS = ["EN PROCESO", "SI", "NO"]
+PAZ_LABELS = {"EN PROCESO": "En proceso", "SI": "Sí", "NO": "No"}
+
 
 def _streamlit_rerun() -> None:
-    """Compatibilidad entre versiones nuevas y antiguas de Streamlit."""
+    """Compatibilidad entre st.rerun y experimental_rerun."""
     rerun = getattr(st, "rerun", None)
     if callable(rerun):
         rerun()
-    else:  # fallback para versiones anteriores
-        _streamlit_rerun()
+    else:
+        st.experimental_rerun()
+
+
+def _select_with_display(label: str, options: List[str], display_map: Dict[str, str], key: str):
+    return st.selectbox(label, options, format_func=lambda opt: display_map.get(opt, opt), key=key)
 
 
 def _all_widget_keys() -> List[str]:
@@ -63,11 +72,11 @@ def _reset_form(meta: dict) -> None:
     st.session_state["nombre_usuario"] = ""
     st.session_state["titulo"] = ""
     st.session_state["fecha"] = date.today()
-    st.session_state["ok_ref"] = ""
-    st.session_state["ok_serv"] = ""
     st.session_state["obs"] = ""
     st.session_state["similitud"] = 0.0
     st.session_state["paz_y_salvo"] = "EN PROCESO"
+    st.session_state["ok_ref"] = "EN PROCESO"
+    st.session_state["ok_serv"] = "EN PROCESO"
 
     fac_names = meta["df_fac"]["Nombre_Facultad"].dropna().astype(str).tolist()
     st.session_state["facultad"] = fac_names[0] if fac_names else ""
@@ -234,6 +243,9 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                             "Asesor_Recursos_Académicos": utils.norm_str(asesor_rec_i),
                             "Nombre_Asesoría": utils.norm_str(nombre_asesoria_i),
                             "Modalidad del Programa": utils.norm_str(modalidad_i),
+                            "Modalidad": utils.norm_str(modalidad_i),
+                            "Asesor_Metodológico": utils.norm_str(asesor_met_i),
+                            "Modalidad_Asesoría2": utils.norm_str(modalidad2_i),
                             "Detalle_Asesor_Metodologico": utils.norm_str(campo_h),
                             "Fecha": pd.to_datetime(fecha).strftime("%Y-%m-%d"),
                         }
@@ -244,15 +256,32 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                 rev_inicial = st.selectbox("Revisión inicial", lists.get("Revisión Inicial", [""]), key="rev_inicial")
                 rev_pl_opts = lists.get("Revisión de Plantilla") or lists.get("Revisión plantilla") or [""]
                 rev_plantilla = st.selectbox("Revisión plantilla", rev_pl_opts, key="rev_plantilla")
-                ok_ref = st.text_input("Ok_Referencistas", placeholder="Ej: listo / pendiente", key="ok_ref")
+                st.session_state.setdefault("ok_ref", "EN PROCESO")
+                ok_ref = _select_with_display(
+                    "OK revisión de plantilla",
+                    STATUS_OPTIONS,
+                    STATUS_LABELS,
+                    key="ok_ref",
+                )
             with c4:
-                ok_serv = st.text_input("OK_Servicios", placeholder="Ej: listo / pendiente", key="ok_serv")
+                st.session_state.setdefault("ok_serv", "EN PROCESO")
+                ok_serv = _select_with_display(
+                    "OK de servicios",
+                    STATUS_OPTIONS,
+                    STATUS_LABELS,
+                    key="ok_serv",
+                )
                 esc_turnitin = st.selectbox("Escaneado Turnitin", lists.get("Escaneado Turnitin", [""]), key="esc_turnitin")
                 similitud = st.number_input("% similitud", min_value=0.0, max_value=100.0, step=0.1, key="similitud")
 
             aprob_sim = st.selectbox("Aprobación similitud", lists.get("Aprobados PyS", [""]), key="aprob_sim")
             obs = st.text_area("Observaciones", height=120, key="obs")
-            paz_y_salvo = st.selectbox("Estudiante apto para paz y salvo", ["EN PROCESO", "SI", "NO"], key="paz_y_salvo")
+            paz_y_salvo = _select_with_display(
+                "Estudiante apto para paz y salvo",
+                PAZ_OPTIONS,
+                PAZ_LABELS,
+                key="paz_y_salvo",
+            )
 
             principal = asesorias_payload[0] if asesorias_payload else {}
             base_row = {
@@ -262,7 +291,10 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                 "Nombre_Usuario": utils.norm_str(st.session_state.get("nombre_usuario")),
                 "Asesor_Recursos_Académicos": principal.get("Asesor_Recursos_Académicos"),
                 "Nombre_Asesoría": principal.get("Nombre_Asesoría"),
-                "Modalidad del Programa": principal.get("Modalidad del Programa"),
+                "Modalidad del Programa": principal.get("Modalidad del Programa") or principal.get("Modalidad"),
+                "Modalidad": principal.get("Modalidad"),
+                "Asesor_Metodológico": principal.get("Asesor_Metodológico"),
+                "Modalidad_Asesoría2": principal.get("Modalidad_Asesoría2"),
                 "Detalle_Asesor_Metodologico": principal.get("Detalle_Asesor_Metodologico"),
                 "Título_Trabajo_Grado": utils.norm_str(titulo),
                 "Fecha": pd.to_datetime(fecha),
@@ -319,9 +351,16 @@ def _tab_consulta(tab, service: RegistroService):
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.subheader("Buscar usuario, ver total, borrar y descargar Excel")
         df_latest = service.load_registro()
-        q = st.text_input("Buscar por nombre o cédula", placeholder="Ej: Valentina o 1032331000", key="q_search")
+        search_cols = st.columns([0.85, 0.15])
+        with search_cols[0]:
+            q = st.text_input("Buscar por nombre o cédula", placeholder="Ej: Valentina o 1032331000", key="q_search")
+        with search_cols[1]:
+            if st.button("🔍", key="btn_search_trigger", help="Ejecutar búsqueda"):
+                st.session_state["q_search"] = q.strip()
+                _streamlit_rerun()
+        q = q.strip()
         if q:
-            q_low = q.strip().lower()
+            q_low = q.lower()
 
             def match_row(row):
                 name = str(row.get("Nombre_Usuario", "")).lower()
@@ -355,7 +394,7 @@ def _tab_consulta(tab, service: RegistroService):
             st.info("No hay registros para mostrar.")
 
         st.divider()
-        st.markdown("### 📌 Historial del estudiante (vista detallada)")
+        st.markdown("### 📌 Historial del estudiante")
         if len(filtered) == 0:
             st.info("Primero busca un estudiante para ver su historial.")
         else:
@@ -381,12 +420,12 @@ def _tab_consulta(tab, service: RegistroService):
             hist_df = service.history_table_from_row(row)
             st.dataframe(hist_df, use_container_width=True)
 
-            st.markdown("### 🧹 Eliminar una asesoría (solo del historial)")
+            st.markdown("### 🧹 Eliminar una asesoría del historial")
             if len(hist_df) == 0:
                 st.info("Este estudiante no tiene asesorías registradas.")
             else:
                 n_values = hist_df["N"].tolist()
-                n_to_delete = st.selectbox("Selecciona el N de la asesoría a eliminar", n_values)
+                n_to_delete = st.selectbox("Selecciona el número de la asesoría a eliminar", n_values)
                 sel_row = hist_df[hist_df["N"] == n_to_delete].iloc[0]
                 st.write("Vas a eliminar:")
                 st.write(f"- **Fecha:** {sel_row.get('Fecha','')}")

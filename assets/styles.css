@@ -88,10 +88,17 @@
 .card .stNumberInput label,
 .card .stDateInput label,
 .card .stRadio label,
+.card .stCheckbox label,
 .card > div > label {
-  color: var(--primary-dark);
+   color: white !important;
   font-weight: 700;
-  font-size: 1.25rem;
+  font-size: 1.15rem;
+  letter-spacing: 0.02em;
+}
+
+/* 🔥 NUEVO BLOQUE */
+label {
+  color: white !important;
 }
 
 .card input,
@@ -107,6 +114,61 @@
   background: rgba(255, 255, 255, 0.9) !important;
   color: #0f172a !important;
   border-radius: 10px !important;
+}
+
+.streamlit-expanderHeader {
+  background: rgba(255, 255, 255, 0.22) !important;
+  color: var(--text-light) !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+  font-size: 1rem !important;
+}
+
+.streamlit-expanderHeader:hover {
+  background: rgba(255, 255, 255, 0.32) !important;
+}
+
+[data-testid="metric-container"] {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  color: var(--text-light);
+}
+
+[data-testid="metric-container"] * {
+  color: var(--text-light) !important;
+}
+
+[data-testid="stMetricLabel"] {
+  font-size: 0.95rem;
+  text-transform: uppercase;
+}
+
+.stDownloadButton button {
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark)) !important;
+  border: none !important;
+  color: #0a1b1e !important;
+  font-weight: 600 !important;
+  border-radius: 12px !important;
+}
+
+.stDownloadButton button:hover {
+  filter: brightness(0.95);
+}
+
+.card .stFileUploader label {
+  color: var(--text-light) !important;
+  font-weight: 600;
+}
+
+.card [data-testid="stFileUploaderDropzone"] {
+  border: 1px dashed rgba(255, 255, 255, 0.5) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--text-light) !important;
+}
+
+.card [data-testid="stFileUploaderDropzone"] span {
+  color: var(--text-light) !important;
 }
 
 @media (max-width: 768px) {
