@@ -12,6 +12,39 @@ import pandas as pd
 from asesorias_app import config
 
 
+def normalize_registro_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Garantiza columnas esperadas, orden y compatibilidad con versiones antiguas."""
+    df = df.copy()
+    legacy_col = getattr(config, "LEGACY_DETALLE_COLUMN", "")
+    if legacy_col and legacy_col in df.columns:
+        legacy_series = df.pop(legacy_col).fillna("")
+        split_df = legacy_series.astype(str).str.split(",", n=1, expand=True)
+        first = split_df[0].str.strip() if 0 in split_df else pd.Series([""] * len(df), index=df.index)
+        if split_df.shape[1] > 1:
+            second = split_df[1].str.strip()
+        else:
+            second = pd.Series([""] * len(df), index=df.index)
+
+        if "Asesor_Metodológico" not in df.columns:
+            df["Asesor_Metodológico"] = first
+        else:
+            mask = df["Asesor_Metodológico"].isna() | (df["Asesor_Metodológico"].astype(str).str.strip() == "")
+            df.loc[mask, "Asesor_Metodológico"] = first[mask]
+
+        if "Modalidad_Asesoría2" not in df.columns:
+            df["Modalidad_Asesoría2"] = second
+        else:
+            mask = df["Modalidad_Asesoría2"].isna() | (df["Modalidad_Asesoría2"].astype(str).str.strip() == "")
+            df.loc[mask, "Modalidad_Asesoría2"] = second[mask]
+
+    for col in config.REGISTRO_COLUMNS:
+        if col not in df.columns:
+            df[col] = None
+
+    ordered_cols = config.REGISTRO_COLUMNS + [c for c in df.columns if c not in config.REGISTRO_COLUMNS]
+    return df[ordered_cols]
+
+
 class ExcelRepository:
     """Encapsula el manejo de lectura y escritura en Excel."""
 
@@ -58,17 +91,20 @@ class ExcelRepository:
     def ensure_db(self) -> None:
         if not self.db_path.exists():
             df_template = pd.read_excel(self.template_path, sheet_name=config.SHEET_REGISTRO)
+            df_template = normalize_registro_df(df_template)
             df_empty = df_template.iloc[0:0].copy()
             df_empty.to_excel(self.db_path, index=False)
 
     def load_registro(self) -> pd.DataFrame:
         self.ensure_db()
         df = pd.read_excel(self.db_path)
+        df = normalize_registro_df(df)
         if "Fecha" in df.columns:
             df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
         return df
 
     def save_registro(self, df: pd.DataFrame) -> None:
+        df = normalize_registro_df(df)
         tmp = self.db_path.with_suffix(".tmp.xlsx")
         df.to_excel(tmp, index=False)
         tmp.replace(self.db_path)

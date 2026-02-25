@@ -17,18 +17,28 @@ from asesorias_app.core.utils import (
     safe_int,
     split_hist,
 )
-from asesorias_app.repositories.excel_repository import ExcelRepository
+from asesorias_app.repositories.excel_repository import ExcelRepository, normalize_registro_df
 from asesorias_app.repositories.google_sheets_repository import GoogleSheetsRepository
 
 
 EXTRA_COLS = [
     "Total_Asesorías",
     "Historial_Asesorías",
+    "Historial_Asesores",
     "Historial_Fechas",
     "Historial_Asesor_Recursos",
     "Historial_Asesor_Metodologico",
     "Paz_y_Salvo",
+    "Paz_y_SSalvo",
 ]
+
+
+def build_detalle_asesor(nombre: Optional[str], modalidad: Optional[str]) -> str:
+    nombre_norm = norm_str(nombre)
+    modalidad_norm = norm_str(modalidad)
+    if nombre_norm and modalidad_norm:
+        return f"{nombre_norm}, {modalidad_norm}"
+    return nombre_norm or modalidad_norm or ""
 
 
 class RegistroService:
@@ -105,6 +115,7 @@ class RegistroService:
         base_row["Historial_Asesorías"] = hist_asesorias
         base_row["Historial_Asesor_Recursos"] = hist_rec
         base_row["Historial_Asesor_Metodologico"] = hist_met
+        base_row["Historial_Asesores"] = hist_met
         base_row["Historial_Fechas"] = hist_fechas
 
         df_new = pd.concat([df_current, pd.DataFrame([base_row])], ignore_index=True)
@@ -133,6 +144,7 @@ class RegistroService:
             df_current.loc[idx, "Historial_Asesor_Metodologico"] = append_pipe(
                 df_current.loc[idx, "Historial_Asesor_Metodologico"], asesoria.get("Detalle_Asesor_Metodologico")
             )
+            df_current.loc[idx, "Historial_Asesores"] = df_current.loc[idx, "Historial_Asesor_Metodologico"]
             df_current.loc[idx, "Historial_Fechas"] = append_pipe(
                 df_current.loc[idx, "Historial_Fechas"], asesoria.get("Fecha")
             )
@@ -166,6 +178,7 @@ class RegistroService:
         row["Historial_Fechas"] = join_hist(fechas)
         row["Historial_Asesor_Recursos"] = join_hist(rec)
         row["Historial_Asesor_Metodologico"] = join_hist(met)
+        row["Historial_Asesores"] = row["Historial_Asesor_Metodologico"]
 
         total = safe_int(row.get("Total_Asesorías", 0))
         row["Total_Asesorías"] = max(total - 1, 0)
@@ -202,12 +215,11 @@ class RegistroService:
         return pd.DataFrame(data)
 
     def bulk_import(self, df_upload: pd.DataFrame) -> None:
-        df_upload = df_upload.copy()
+        df_upload = normalize_registro_df(df_upload.copy())
         if "Fecha" in df_upload.columns:
             df_upload["Fecha"] = pd.to_datetime(df_upload["Fecha"], errors="coerce").dt.strftime("%Y-%m-%d")
 
         df = self.load_registro()
-        col_detalle = "Asesor_Metodológico, Modalidad_Asesoría2, Asesor_Metodológico, Modalidad_Asesoría2"
         for _, row in df_upload.iterrows():
             ced = norm_str(row.get("Cédula"))
             nom = norm_str(row.get("Nombre_Usuario"))
@@ -222,14 +234,20 @@ class RegistroService:
                     base_row[col] = row.get(col)
 
             base_row["Paz_y_Salvo"] = norm_str(row.get("Paz_y_Salvo")) or "EN PROCESO"
-            base_row["Fecha"] = pd.to_datetime(row.get("Fecha"), errors="coerce")
+            fecha_val = pd.to_datetime(row.get("Fecha"), errors="coerce")
+            if pd.isna(fecha_val):
+                fecha_val = pd.Timestamp(date.today())
+            base_row["Fecha"] = fecha_val
 
+            detalle = build_detalle_asesor(row.get("Asesor_Metodológico"), row.get("Modalidad_Asesoría2"))
             asesoria_payload = [
                 {
                     "Nombre_Asesoría": norm_str(row.get("Nombre_Asesoría")),
                     "Asesor_Recursos_Académicos": norm_str(row.get("Asesor_Recursos_Académicos")),
-                    "Detalle_Asesor_Metodologico": norm_str(row.get(col_detalle)) or "",
-                    "Fecha": base_row["Fecha"].strftime("%Y-%m-%d") if pd.notna(base_row["Fecha"]) else date.today().strftime("%Y-%m-%d"),
+                    "Detalle_Asesor_Metodologico": detalle,
+                    "Fecha": base_row["Fecha"].strftime("%Y-%m-%d")
+                    if pd.notna(base_row["Fecha"])
+                    else date.today().strftime("%Y-%m-%d"),
                 }
             ]
 
@@ -239,7 +257,8 @@ class RegistroService:
                 base_row["Historial_Asesorías"] = asesoria_payload[0]["Nombre_Asesoría"] or ""
                 base_row["Historial_Fechas"] = asesoria_payload[0]["Fecha"]
                 base_row["Historial_Asesor_Recursos"] = asesoria_payload[0]["Asesor_Recursos_Académicos"] or ""
-                base_row["Historial_Asesor_Metodologico"] = asesoria_payload[0]["Detalle_Asesor_Metodologico"] or ""
+                base_row["Historial_Asesor_Metodologico"] = detalle or ""
+                base_row["Historial_Asesores"] = base_row["Historial_Asesor_Metodologico"]
                 df = pd.concat([df, pd.DataFrame([base_row])], ignore_index=True)
             else:
                 for key, value in base_row.items():
@@ -253,8 +272,9 @@ class RegistroService:
                     df.loc[idx, "Historial_Asesor_Recursos"], asesoria_payload[0]["Asesor_Recursos_Académicos"]
                 )
                 df.loc[idx, "Historial_Asesor_Metodologico"] = append_pipe(
-                    df.loc[idx, "Historial_Asesor_Metodologico"], asesoria_payload[0]["Detalle_Asesor_Metodologico"]
+                    df.loc[idx, "Historial_Asesor_Metodologico"], detalle
                 )
+                df.loc[idx, "Historial_Asesores"] = df.loc[idx, "Historial_Asesor_Metodologico"]
                 df.loc[idx, "Historial_Fechas"] = append_pipe(
                     df.loc[idx, "Historial_Fechas"], asesoria_payload[0]["Fecha"]
                 )
