@@ -207,7 +207,7 @@ def perform_reset(meta):
     st.session_state["ok_serv"] = ""
     st.session_state["obs"] = ""
     st.session_state["similitud"] = 0.0
-    st.session_state["paz_y_salvo"] = "EN PROCESO"
+    st.session_state["paz_y_salvo"] = "En proceso"
 
     fac_names = meta["df_fac"]["Nombre_Facultad"].dropna().astype(str).tolist()
     st.session_state["facultad"] = fac_names[0] if fac_names else ""
@@ -267,7 +267,7 @@ def autofill_by_cedula(meta):
 
     st.session_state["nombre_usuario"] = str(df.loc[idx, "Nombre_Usuario"] or "")
     st.session_state["titulo"] = str(df.loc[idx, "Título_Trabajo_Grado"] or "")
-    st.session_state["paz_y_salvo"] = str(df.loc[idx, "Paz_y_Salvo"] or "EN PROCESO")
+    st.session_state["paz_y_salvo"] = str(df.loc[idx, "Paz_y_Salvo"] or "En proceso")
 
     fac_norm = str(df.loc[idx, "Nombre_Facultad"] or "").strip()
     fac_display = meta["fac_norm_map"].get(fac_norm)
@@ -315,7 +315,7 @@ def bulk_import(df_upload: pd.DataFrame):
         if "Fecha" in base_row:
             base_row["Fecha"] = fec
 
-        paz = norm_str(row.get("Paz_y_Salvo")) or "EN PROCESO"
+        paz = norm_str(row.get("Paz_y_Salvo")) or "En proceso"
         asesor_rec = norm_str(row.get("Asesor_Recursos_Académicos"))
         nombre_asesoria = norm_str(row.get("Nombre_Asesoría"))
         campo_h = norm_str(row.get(col8_name))
@@ -564,7 +564,7 @@ with tab1:
             "Escaneado Turnitin": norm_str(esc_turnitin),
             "% similitud": float(similitud),
             "Aprobación_Similitud": norm_str(aprob_sim),
-            "Paz_y_Salvo": norm_str(paz_y_salvo) or "EN PROCESO",
+            "Paz_y_Salvo": norm_str(paz_y_salvo) or "En proceso",
         }
 
         b1, b2 = st.columns(2)
