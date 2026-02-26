@@ -117,15 +117,17 @@ label {
 }
 
 .streamlit-expanderHeader {
-  background: rgba(255, 255, 255, 0.22) !important;
-  color: var(--text-light) !important;
+  background: var(--accent) !important;
+  color: #0a1b1e !important;
   border-radius: 12px !important;
   font-weight: 600 !important;
   font-size: 1rem !important;
+  transition: background 0.2s ease-in-out !important;
 }
 
 .streamlit-expanderHeader:hover {
-  background: rgba(255, 255, 255, 0.32) !important;
+  background: var(--accent-dark) !important;
+  color: #0a1b1e !important;
 }
 
 [data-testid="metric-container"] {
