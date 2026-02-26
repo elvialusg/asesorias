@@ -146,10 +146,7 @@ div[data-testid="stExpander"] .streamlit-expanderHeader span {
   color: #0a1b1e !important;
 }
 
-.stTabs [data-baseweb="tab-highlight"],
-.stTabs [data-baseweb="tab-border"] {
-  display: none !important;
-}
+
 
 [data-testid="metric-container"] {
   background: rgba(255, 255, 255, 0.08);
