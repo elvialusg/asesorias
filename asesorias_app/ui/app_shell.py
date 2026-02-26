@@ -171,7 +171,6 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
     df_prog = meta["df_prog"]
 
     with tab:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
         colA, colB = st.columns([1.15, 0.85], gap="large")
         with colA:
             st.subheader("Formulario de registro")
@@ -369,12 +368,10 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
             if drop_cols:
                 sorted_show = sorted_show.drop(columns=drop_cols)
             st.dataframe(sorted_show, use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _tab_consulta(tab, service: RegistroService):
     with tab:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
         st.subheader("Buscar usuario, ver total, borrar y descargar Excel")
         df_latest = service.load_registro()
         search_cols = st.columns([0.85, 0.15])
@@ -516,12 +513,10 @@ def _tab_consulta(tab, service: RegistroService):
             file_name="registro_asesorias_actual.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _tab_masivo(tab, service: RegistroService):
     with tab:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
         st.subheader("Carga masiva (plantilla · subir · actualizar registros)")
         template_cols = service.load_registro().columns.tolist()
         st.markdown("**1) Descargar plantilla** (mismos campos del formulario + paz y salvo).")
@@ -544,7 +539,6 @@ def _tab_masivo(tab, service: RegistroService):
                     _streamlit_rerun()
             except Exception as exc:
                 st.error(f"No se pudo leer/importar el archivo: {exc}")
-        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_app():

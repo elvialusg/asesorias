@@ -454,7 +454,6 @@ st.title("Asesorías – Trabajo de grado")
 tab1, tab2, tab3 = st.tabs(["➕ Registrar asesoría", "🔎 Consultar usuario", "⬆️ Carga masiva"])
 
 with tab1:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
 
     if st.session_state.get("reset_pending", False) or "init_done" not in st.session_state:
         perform_reset(meta)
@@ -641,10 +640,8 @@ with tab1:
             show["Fecha"] = pd.to_datetime(show["Fecha"], errors="coerce")
         st.dataframe(show.sort_values("Fecha", ascending=False).tail(15), use_container_width=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)
 
 with tab2:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Buscar usuario, ver total, borrar y descargar Excel")
 
     df_latest = load_registro()
@@ -755,10 +752,8 @@ with tab2:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key="dl_current_excel",
     )
-    st.markdown("</div>", unsafe_allow_html=True)
 
 with tab3:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Carga masiva (plantilla → subir → actualizar registros)")
 
     template_cols_order = load_registro().columns.tolist()
@@ -784,4 +779,3 @@ with tab3:
                 st.rerun()
         except Exception as e:
             st.error(f"No se pudo leer/importar el archivo: {e}")
-    st.markdown("</div>", unsafe_allow_html=True)
