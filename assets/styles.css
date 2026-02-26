@@ -123,11 +123,32 @@ label {
   font-weight: 600 !important;
   font-size: 1rem !important;
   transition: background 0.2s ease-in-out !important;
+  border: none !important;
 }
 
 .streamlit-expanderHeader:hover {
-  background: var(--accent-dark) !important;
+  background: var(--accent) !important;
   color: #0a1b1e !important;
+}
+
+div[data-testid="stExpander"] {
+  border: none !important;
+}
+
+div[data-testid="stExpander"] > details {
+  border: none !important;
+  background: transparent !important;
+}
+
+div[data-testid="stExpander"] .streamlit-expanderHeader > div:first-child,
+div[data-testid="stExpander"] .streamlit-expanderHeader p,
+div[data-testid="stExpander"] .streamlit-expanderHeader span {
+  color: #0a1b1e !important;
+}
+
+.stTabs [data-baseweb="tab-highlight"],
+.stTabs [data-baseweb="tab-border"] {
+  display: none !important;
 }
 
 [data-testid="metric-container"] {

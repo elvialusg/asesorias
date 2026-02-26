@@ -192,7 +192,7 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
             with c2:
                 st.text_input("Nombre del usuario", placeholder="Ej: Juan Pérez", key="nombre_usuario")
             titulo = st.text_input("Título trabajo de grado", key="titulo")
-            fecha = st.date_input("Fecha", key="fecha")
+            fecha = st.date_input("Fecha", key="fecha", format="DD/MM/YYYY")
 
             st.markdown("### Asesorías a registrar")
             n = int(st.session_state.get("asesorias_n", 1))
