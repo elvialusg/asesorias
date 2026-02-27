@@ -116,19 +116,24 @@ label {
   border-radius: 10px !important;
 }
 
-.streamlit-expanderHeader {
-  background: var(--accent) !important;
-  color: #0a1b1e !important;
-  border-radius: 12px !important;
+[data-testid="stExpander"] > details > summary {
+  background: rgba(15, 87, 96, 0.85) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 10px !important;
+  padding: 0.75rem 1rem !important;
   font-weight: 600 !important;
   font-size: 1rem !important;
-  transition: background 0.2s ease-in-out !important;
-  border: none !important;
+  display: block !important;
+  color: var(--text-light) !important;
 }
 
-.streamlit-expanderHeader:hover {
-  background: var(--accent) !important;
-  color: #0a1b1e !important;
+[data-testid="stExpander"] > details > summary *,
+[data-testid="stExpander"] > details > summary span {
+  color: var(--text-light) !important;
+}
+
+[data-testid="stExpander"] > details > summary:hover {
+  background: rgba(15, 87, 96, 0.9) !important;
 }
 
 div[data-testid="stExpander"] {
@@ -150,10 +155,14 @@ div[data-testid="stExpander"] .streamlit-expanderHeader span {
 
 .st-emotion-cache-11fa8f,
 .st-emotion-cache-11fa8f * {
-  color: #0a1b1e !important;
+  color: var(--text-light) !important;
 }
 .st-emotion-cache-11fa8f {
   display: block !important;
+  background: rgba(15, 87, 96, 0.85) !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  padding: 0.75rem 1rem !important;
 }
 
 [data-testid="metric-container"] {
