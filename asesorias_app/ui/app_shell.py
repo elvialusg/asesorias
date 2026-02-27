@@ -378,9 +378,7 @@ def _tab_consulta(tab, service: RegistroService):
         with search_cols[0]:
             q = st.text_input("Buscar por nombre o cédula", placeholder="Ej: Valentina o 1032331000", key="q_search")
         with search_cols[1]:
-            if st.button("🔍", key="btn_search_trigger", help="Ejecutar búsqueda"):
-                st.session_state["q_search"] = q.strip()
-                _streamlit_rerun()
+            st.button("🔍", key="btn_search_trigger", help="Ejecutar búsqueda")
         q = q.strip()
         if q:
             q_low = q.lower()
