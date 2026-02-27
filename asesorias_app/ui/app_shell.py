@@ -33,6 +33,15 @@ def _select_with_display(label: str, options: List[str], display_map: Dict[str, 
     return st.selectbox(label, options, format_func=lambda opt: display_map.get(opt, opt), key=key)
 
 
+def _format_list_label(option) -> str:
+    if option is None:
+        return ""
+    text = str(option)
+    # Replace underscores with spaces and collapse duplicate spaces.
+    cleaned = text.replace("_", " ").strip()
+    return " ".join(cleaned.split()) if cleaned else ""
+
+
 def _all_widget_keys() -> List[str]:
     base = [
         "facultad",
@@ -73,7 +82,7 @@ def _reset_form(meta: dict) -> None:
     st.session_state["titulo"] = ""
     st.session_state["fecha"] = date.today()
     st.session_state["obs"] = ""
-    st.session_state["similitud"] = 0.0
+    st.session_state["similitud"] = 0
     st.session_state["paz_y_salvo"] = "EN PROCESO"
     st.session_state["ok_ref"] = "EN PROCESO"
     st.session_state["ok_serv"] = "EN PROCESO"
@@ -119,22 +128,6 @@ def _add_asesoria():
     st.session_state["asesorias_n"] = int(st.session_state.get("asesorias_n", 1)) + 1
 
 
-def _remove_asesoria():
-    n = int(st.session_state.get("asesorias_n", 1))
-    if n <= 1:
-        return
-    last = n - 1
-    for key in [
-        f"asesor_rec_{last}",
-        f"nombre_asesoria_{last}",
-        f"modalidad_{last}",
-        f"asesor_metodologico_{last}",
-        f"modalidad2_{last}",
-    ]:
-        st.session_state.pop(key, None)
-    st.session_state["asesorias_n"] = n - 1
-
-
 def _autofill_by_cedula(meta: dict, service: RegistroService):
     ced = st.session_state.get("cedula", "").strip()
     if not ced:
@@ -178,7 +171,6 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
     df_prog = meta["df_prog"]
 
     with tab:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
         colA, colB = st.columns([1.15, 0.85], gap="large")
         with colA:
             st.subheader("Formulario de registro")
@@ -199,15 +191,13 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
             with c2:
                 st.text_input("Nombre del usuario", placeholder="Ej: Juan Pérez", key="nombre_usuario")
             titulo = st.text_input("Título trabajo de grado", key="titulo")
-            fecha = st.date_input("Fecha", key="fecha")
+            fecha = st.date_input("Fecha", key="fecha", format="DD/MM/YYYY")
 
             st.markdown("### Asesorías a registrar")
             n = int(st.session_state.get("asesorias_n", 1))
-            cadd, crem, _ = st.columns([0.25, 0.25, 0.5])
+            cadd, _ = st.columns([0.3, 0.7])
             with cadd:
                 st.button("Agregar asesoría", on_click=_add_asesoria, key="btn_add_asesoria")
-            with crem:
-                st.button("Quitar última", on_click=_remove_asesoria, disabled=(n <= 1), key="btn_remove_asesoria")
 
             asesorias_payload = []
             for i in range(n):
@@ -215,13 +205,20 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                     asesor_rec_i = st.selectbox(
                         "Asesor Recursos Académicos",
                         lists.get("Asesor_Recursos_Académicos", [""]),
+                        format_func=_format_list_label,
                         key=f"asesor_rec_{i}",
                     )
                     nombre_asesoria_i = st.selectbox(
-                        "Nombre de la asesoría", lists.get("Nombre_Asesoría", [""]), key=f"nombre_asesoria_{i}"
+                        "Nombre de la asesoría",
+                        lists.get("Nombre_Asesoría", [""]),
+                        format_func=_format_list_label,
+                        key=f"nombre_asesoria_{i}",
                     )
                     modalidad_i = st.selectbox(
-                        "Modalidad", lists.get("Modalidad_Asesoría", ["Virtual", "Presencial"]), key=f"modalidad_{i}"
+                        "Modalidad",
+                        lists.get("Modalidad_Asesoría", ["Virtual", "Presencial"]),
+                        format_func=_format_list_label,
+                        key=f"modalidad_{i}",
                     )
                     st.markdown("**Asesor metodológico**")
                     asesor_met_i = st.text_input(
@@ -247,21 +244,27 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                             "Asesor_Metodológico": utils.norm_str(asesor_met_i),
                             "Modalidad_Asesoría2": utils.norm_str(modalidad2_i),
                             "Detalle_Asesor_Metodologico": utils.norm_str(campo_h),
-                            "Fecha": pd.to_datetime(fecha).strftime("%Y-%m-%d"),
+                            "Fecha": pd.to_datetime(fecha).strftime("%d-%m-%Y"),
                         }
                     )
 
             c3, c4 = st.columns(2)
             with c3:
-                rev_inicial = st.selectbox("Revisión inicial", lists.get("Revisión Inicial", [""]), key="rev_inicial")
+                rev_inicial = st.selectbox(
+                    "Revisión inicial",
+                    lists.get("Revisión Inicial", [""]),
+                    format_func=_format_list_label,
+                    key="rev_inicial",
+                )
                 rev_pl_opts = lists.get("Revisión de Plantilla") or lists.get("Revisión plantilla") or [""]
-                rev_plantilla = st.selectbox("Revisión plantilla", rev_pl_opts, key="rev_plantilla")
-                st.session_state.setdefault("ok_ref", "EN PROCESO")
-                ok_ref = _select_with_display(
-                    "OK revisión de plantilla",
-                    STATUS_OPTIONS,
-                    STATUS_LABELS,
-                    key="ok_ref",
+                rev_plantilla = st.selectbox(
+                    "Revisión plantilla", rev_pl_opts, format_func=_format_list_label, key="rev_plantilla"
+                )
+                esc_turnitin = st.selectbox(
+                    "Escaneado Turnitin",
+                    lists.get("Escaneado Turnitin", [""]),
+                    format_func=_format_list_label,
+                    key="esc_turnitin",
                 )
             with c4:
                 st.session_state.setdefault("ok_serv", "EN PROCESO")
@@ -271,10 +274,21 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                     STATUS_LABELS,
                     key="ok_serv",
                 )
-                esc_turnitin = st.selectbox("Escaneado Turnitin", lists.get("Escaneado Turnitin", [""]), key="esc_turnitin")
-                similitud = st.number_input("% similitud", min_value=0.0, max_value=100.0, step=0.1, key="similitud")
+                st.session_state.setdefault("ok_ref", "EN PROCESO")
+                ok_ref = _select_with_display(
+                    "OK revisión de plantilla",
+                    STATUS_OPTIONS,
+                    STATUS_LABELS,
+                    key="ok_ref",
+                )
+                similitud = st.number_input("% similitud", min_value=0, max_value=100, step=1, key="similitud")
 
-            aprob_sim = st.selectbox("Aprobación similitud", lists.get("Aprobados PyS", [""]), key="aprob_sim")
+            aprob_sim = st.selectbox(
+                "Aprobación similitud",
+                lists.get("Aprobados PyS", [""]),
+                format_func=_format_list_label,
+                key="aprob_sim",
+            )
             obs = st.text_area("Observaciones", height=120, key="obs")
             paz_y_salvo = _select_with_display(
                 "Estudiante apto para paz y salvo",
@@ -304,7 +318,7 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                 "OK_Servicios": utils.norm_str(ok_serv),
                 "Observaciones": utils.norm_str(obs),
                 "Escaneado Turnitin": utils.norm_str(esc_turnitin),
-                "% similitud": float(similitud),
+                "% similitud": int(similitud),
                 "Aprobación_Similitud": utils.norm_str(aprob_sim),
                 "Paz_y_Salvo": utils.norm_str(paz_y_salvo) or "EN PROCESO",
             }
@@ -340,15 +354,24 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
             df_latest = service.load_registro()
             st.caption("Últimos 15 registros")
             show = df_latest.copy()
+            sort_col = "Fecha" if "Fecha" in show.columns else None
+            drop_cols = []
             if "Fecha" in show.columns:
-                show["Fecha"] = pd.to_datetime(show["Fecha"], errors="coerce")
-            st.dataframe(show.sort_values("Fecha", ascending=False).head(15), use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+                show["_Fecha_sort"] = pd.to_datetime(show["Fecha"], errors="coerce")
+                show["Fecha"] = show["_Fecha_sort"].dt.strftime("%d-%m-%Y")
+                sort_col = "_Fecha_sort"
+                drop_cols.append("_Fecha_sort")
+            sorted_show = show
+            if sort_col:
+                sorted_show = sorted_show.sort_values(sort_col, ascending=False)
+            sorted_show = sorted_show.head(15)
+            if drop_cols:
+                sorted_show = sorted_show.drop(columns=drop_cols)
+            st.dataframe(sorted_show, use_container_width=True)
 
 
 def _tab_consulta(tab, service: RegistroService):
     with tab:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
         st.subheader("Buscar usuario, ver total, borrar y descargar Excel")
         df_latest = service.load_registro()
         search_cols = st.columns([0.85, 0.15])
@@ -386,10 +409,18 @@ def _tab_consulta(tab, service: RegistroService):
             ]
             if c in filtered.columns
         ]
+        sort_col = "Fecha" if "Fecha" in filtered.columns else None
         if "Fecha" in filtered.columns:
-            filtered["Fecha"] = pd.to_datetime(filtered["Fecha"], errors="coerce")
+            filtered["_Fecha_sort"] = pd.to_datetime(filtered["Fecha"], errors="coerce")
+            filtered["Fecha"] = filtered["_Fecha_sort"].dt.strftime("%d-%m-%Y")
+            sort_col = "_Fecha_sort"
         if not filtered.empty:
-            st.dataframe(filtered[cols_show].sort_values("Fecha", ascending=False), use_container_width=True)
+            df_to_show = filtered
+            if sort_col:
+                df_to_show = df_to_show.sort_values(sort_col, ascending=False)
+            if "_Fecha_sort" in df_to_show.columns:
+                df_to_show = df_to_show.drop(columns="_Fecha_sort")
+            st.dataframe(df_to_show[cols_show], use_container_width=True)
         else:
             st.info("No hay registros para mostrar.")
 
@@ -482,12 +513,10 @@ def _tab_consulta(tab, service: RegistroService):
             file_name="registro_asesorias_actual.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _tab_masivo(tab, service: RegistroService):
     with tab:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
         st.subheader("Carga masiva (plantilla · subir · actualizar registros)")
         template_cols = service.load_registro().columns.tolist()
         st.markdown("**1) Descargar plantilla** (mismos campos del formulario + paz y salvo).")
@@ -510,7 +539,6 @@ def _tab_masivo(tab, service: RegistroService):
                     _streamlit_rerun()
             except Exception as exc:
                 st.error(f"No se pudo leer/importar el archivo: {exc}")
-        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_app():

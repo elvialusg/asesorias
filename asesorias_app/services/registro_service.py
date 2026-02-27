@@ -192,7 +192,7 @@ class RegistroService:
             if rec:
                 row["Asesor_Recursos_Académicos"] = rec[0]
             if fechas:
-                row["Fecha"] = pd.to_datetime(fechas[0], errors="coerce")
+                row["Fecha"] = pd.to_datetime(fechas[0], errors="coerce", dayfirst=True)
         return row
 
     def history_table_from_row(self, row: pd.Series) -> pd.DataFrame:
@@ -200,6 +200,13 @@ class RegistroService:
         fechas = split_hist(row.get("Historial_Fechas"))
         rec = split_hist(row.get("Historial_Asesor_Recursos"))
         met = split_hist(row.get("Historial_Asesor_Metodologico"))
+        fechas_fmt: List[str] = []
+        for value in fechas:
+            parsed = pd.to_datetime(value, errors="coerce", dayfirst=True)
+            if pd.isna(parsed):
+                fechas_fmt.append(value or "")
+            else:
+                fechas_fmt.append(parsed.strftime("%d-%m-%Y"))
         max_len = max(len(ases), len(fechas), len(rec), len(met))
         data = []
         for idx in range(max_len):
@@ -207,7 +214,7 @@ class RegistroService:
                 {
                     "N": idx + 1,
                     "Asesoría": ases[idx] if idx < len(ases) else "",
-                    "Fecha": fechas[idx] if idx < len(fechas) else "",
+                    "Fecha": fechas_fmt[idx] if idx < len(fechas_fmt) else "",
                     "Asesor Recursos": rec[idx] if idx < len(rec) else "",
                     "Asesor Metodológico": met[idx] if idx < len(met) else "",
                 }
@@ -217,7 +224,7 @@ class RegistroService:
     def bulk_import(self, df_upload: pd.DataFrame) -> None:
         df_upload = normalize_registro_df(df_upload.copy())
         if "Fecha" in df_upload.columns:
-            df_upload["Fecha"] = pd.to_datetime(df_upload["Fecha"], errors="coerce").dt.strftime("%Y-%m-%d")
+            df_upload["Fecha"] = pd.to_datetime(df_upload["Fecha"], errors="coerce").dt.strftime("%d-%m-%Y")
 
         df = self.load_registro()
         for _, row in df_upload.iterrows():
@@ -245,9 +252,9 @@ class RegistroService:
                     "Nombre_Asesoría": norm_str(row.get("Nombre_Asesoría")),
                     "Asesor_Recursos_Académicos": norm_str(row.get("Asesor_Recursos_Académicos")),
                     "Detalle_Asesor_Metodologico": detalle,
-                    "Fecha": base_row["Fecha"].strftime("%Y-%m-%d")
+                    "Fecha": base_row["Fecha"].strftime("%d-%m-%Y")
                     if pd.notna(base_row["Fecha"])
-                    else date.today().strftime("%Y-%m-%d"),
+                    else date.today().strftime("%d-%m-%Y"),
                 }
             ]
 
