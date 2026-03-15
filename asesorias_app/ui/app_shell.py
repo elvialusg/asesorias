@@ -1,4 +1,4 @@
-"""Vistas principales usando Streamlit."""
+﻿"""Vistas principales usando Streamlit."""
 
 from __future__ import annotations
 
@@ -171,7 +171,7 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
     df_prog = meta["df_prog"]
 
     with tab:
-        colA, colB = st.columns([1.15, 0.85], gap="large")
+        colA = st.container()
         with colA:
             st.subheader("Formulario de registro")
             fac_names = df_fac["Nombre_Facultad"].dropna().astype(str).tolist()
@@ -349,25 +349,6 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                         except ValueError as exc:
                             st.warning(str(exc))
 
-        with colB:
-            st.subheader("Vista rápida")
-            df_latest = service.load_registro()
-            st.caption("Últimos 15 registros")
-            show = df_latest.copy()
-            sort_col = "Fecha" if "Fecha" in show.columns else None
-            drop_cols = []
-            if "Fecha" in show.columns:
-                show["_Fecha_sort"] = pd.to_datetime(show["Fecha"], errors="coerce")
-                show["Fecha"] = show["_Fecha_sort"].dt.strftime("%d-%m-%Y")
-                sort_col = "_Fecha_sort"
-                drop_cols.append("_Fecha_sort")
-            sorted_show = show
-            if sort_col:
-                sorted_show = sorted_show.sort_values(sort_col, ascending=False)
-            sorted_show = sorted_show.head(15)
-            if drop_cols:
-                sorted_show = sorted_show.drop(columns=drop_cols)
-            st.dataframe(sorted_show, use_container_width=True)
 
 
 def _tab_consulta(tab, service: RegistroService):
