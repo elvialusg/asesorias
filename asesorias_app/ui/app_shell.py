@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import io
-from datetime import date
+from datetime import date, datetime
 from typing import Dict, List, Optional
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from asesorias_app.config import TEMPLATE_PATH
 from asesorias_app.core import utils
@@ -53,6 +54,22 @@ def _selected_value(value: Optional[str]) -> str:
     if value in (None, "", PLACEHOLDER_OPTION):
         return ""
     return str(value)
+
+
+def _clean_str(value) -> str:
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except TypeError:
+        pass
+    text = str(value).strip()
+    return "" if text.lower() == "nan" else text
+
+
+def _set_select_state(key: str, value) -> None:
+    st.session_state[key] = _clean_str(value) or PLACEHOLDER_OPTION
 
 
 def _all_widget_keys() -> List[str]:
@@ -137,18 +154,54 @@ def _autofill_by_cedula(meta: dict, service: RegistroService):
     df = service.load_registro()
     idx = service.find_student_index(df, cedula=ced, nombre=None)
     if idx is None:
+        st.session_state["search_modal"] = {
+            "message": "El usuario no se encuentra registrado, puede crearlo.",
+            "success": False,
+            "expires_at": datetime.utcnow().timestamp() + 10,
+        }
         return
-    st.session_state["nombre_usuario"] = str(df.loc[idx, "Nombre_Usuario"] or "")
-    st.session_state["titulo"] = str(df.loc[idx, "Título_Trabajo_Grado"] or "")
-    st.session_state["paz_y_salvo"] = str(df.loc[idx, "Paz_y_Salvo"] or PLACEHOLDER_OPTION)
+    row = df.loc[idx]
+    st.session_state["nombre_usuario"] = _clean_str(row.get("Nombre_Usuario"))
+    st.session_state["titulo"] = _clean_str(row.get("Título_Trabajo_Grado"))
+    st.session_state["obs"] = _clean_str(row.get("Observaciones"))
+    _set_select_state("paz_y_salvo", row.get("Paz_y_Salvo"))
+    _set_select_state("rev_inicial", row.get("Revisión Inicial"))
+    rev_pl_value = row.get("Revisión plantilla") or row.get("Revisión de Plantilla")
+    _set_select_state("rev_plantilla", rev_pl_value)
+    _set_select_state("ok_ref", row.get("Ok_Referencistas"))
+    _set_select_state("ok_serv", row.get("OK_Servicios"))
+    _set_select_state("esc_turnitin", row.get("Escaneado Turnitin"))
+    _set_select_state("aprob_sim", row.get("Aprobación_Similitud"))
 
-    fac_norm = str(df.loc[idx, "Nombre_Facultad"] or "").strip()
+    similitud_val = row.get("% similitud")
+    try:
+        st.session_state["similitud"] = int(float(similitud_val))
+    except (TypeError, ValueError):
+        st.session_state["similitud"] = 0
+
+    fecha_val = row.get("Fecha")
+    if fecha_val is not None:
+        try:
+            fecha_dt = pd.to_datetime(fecha_val)
+            if not pd.isna(fecha_dt):
+                st.session_state["fecha"] = fecha_dt.date()
+        except Exception:
+            pass
+
+    fac_norm = _clean_str(row.get("Nombre_Facultad"))
     fac_display = meta["fac_norm_map"].get(fac_norm)
     if fac_display:
         st.session_state["facultad"] = fac_display
-        prog = str(df.loc[idx, "Nombre_Programa"] or "").strip()
-        if prog:
-            st.session_state["programa"] = prog
+    else:
+        st.session_state["facultad"] = fac_norm or PLACEHOLDER_OPTION
+    prog = _clean_str(row.get("Nombre_Programa"))
+    st.session_state["programa"] = prog or PLACEHOLDER_OPTION
+
+    st.session_state["search_modal"] = {
+        "message": "El usuario ya se encuentra registrado.",
+        "success": True,
+        "expires_at": datetime.utcnow().timestamp() + 10,
+    }
 
 
 def _render_tabs(service: RegistroService, meta: dict) -> None:
@@ -176,6 +229,44 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
         spacer_left, colA, spacer_right = st.columns([0.15, 0.7, 0.15])
         with colA:
             st.subheader("Formulario de registro")
+            modal_data = st.session_state.get("search_modal")
+            if modal_data:
+                expires_at = modal_data.get("expires_at")
+                now_ts = datetime.utcnow().timestamp()
+                if expires_at and now_ts >= expires_at:
+                    st.session_state.pop("search_modal", None)
+                else:
+                    message = modal_data.get("message", "")
+                    success = modal_data.get("success")
+                    bg_color = "rgba(16, 185, 129, 0.6)" if success else "rgba(245, 158, 11, 0.7)"
+                    border_color = "#16a34a" if success else "#f97316"
+                    modal_id = f"search_modal_{int(expires_at or now_ts)}"
+                    components.html(
+                        f"""
+<div id="{modal_id}" style="
+    padding: 1rem 1.2rem;
+    border-radius: 0.65rem;
+    border: 1px solid {border_color};
+    background-color: {bg_color};
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 1rem;
+    letter-spacing: 0.01em;
+    margin-bottom: 0.75rem;
+">
+    {message}
+</div>
+<script>
+setTimeout(function(){{
+    var el = document.getElementById("{modal_id}");
+    if (el) {{
+        el.style.display = "none";
+    }}
+}}, 10000);
+</script>
+""",
+                        height=70,
+                    )
             fac_names = df_fac["Nombre_Facultad"].dropna().astype(str).tolist()
             fac_options = [PLACEHOLDER_OPTION] + fac_names
             fac_display = st.selectbox("Facultad", fac_options, key="facultad")
@@ -195,12 +286,16 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
             prog_display = st.selectbox("Programa", prog_options, key="programa")
             c1, c2 = st.columns(2)
             with c1:
-                st.text_input(
-                    "Cédula",
-                    placeholder="Ej: 1032331000",
-                    key="cedula",
-                    on_change=lambda: _autofill_by_cedula(meta, service),
-                )
+                input_col, btn_col = st.columns([0.7, 0.3])
+                with input_col:
+                    st.text_input("Cédula", placeholder="Ej: 1032331000", key="cedula")
+                with btn_col:
+                    st.button(
+                        "Buscar",
+                        type="secondary",
+                        key="btn_buscar_cedula",
+                        on_click=lambda: _autofill_by_cedula(meta, service),
+                    )
             with c2:
                 st.text_input("Nombre del usuario", placeholder="Ej: Juan Pérez", key="nombre_usuario")
             titulo = st.text_input("Título trabajo de grado", key="titulo")
