@@ -288,7 +288,7 @@ setTimeout(function(){{
             with c1:
                 input_col, btn_col = st.columns([0.7, 0.3])
                 with input_col:
-                    st.text_input("Cédula", placeholder="Ej: 1032331000", key="cedula")
+                    st.text_input("Documento/Id *", placeholder="Ej: 1032331000", key="cedula")
                 with btn_col:
                     st.button(
                         "Buscar",
@@ -297,7 +297,7 @@ setTimeout(function(){{
                         on_click=lambda: _autofill_by_cedula(meta, service),
                     )
             with c2:
-                st.text_input("Nombre del usuario", placeholder="Ej: Juan Pérez", key="nombre_usuario")
+                st.text_input("Nombre y apellidos *", placeholder="Ej: Juan Pérez", key="nombre_usuario")
             titulo = st.text_input("Título trabajo de grado", key="titulo")
             fecha = st.date_input("Fecha", key="fecha", format="DD/MM/YYYY")
 
@@ -396,8 +396,10 @@ setTimeout(function(){{
 
             with st.container():
                 if st.button("💾 Guardar registro", type="primary"):
-                    if not base_row["Cédula"] and not base_row["Nombre_Usuario"]:
-                        st.warning("Escribe al menos el nombre o la cédula.")
+                    if not base_row["Cédula"]:
+                        st.warning("El campo Documento/Id es obligatorio.")
+                    elif not base_row["Nombre_Usuario"]:
+                        st.warning("El campo Nombre y apellidos es obligatorio.")
                     else:
                         try:
                             service.add_registro(base_row, asesorias_payload)
