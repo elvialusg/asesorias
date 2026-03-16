@@ -14,10 +14,15 @@ from asesorias_app.core import utils
 from asesorias_app.services.registro_service import RegistroService
 from asesorias_app.ui.theme import load_theme
 
+PLACEHOLDER_OPTION = "Seleccionar"
 STATUS_OPTIONS = ["SI", "NO", "EN PROCESO"]
+STATUS_OPTIONS_WITH_PLACEHOLDER = [PLACEHOLDER_OPTION] + STATUS_OPTIONS
 STATUS_LABELS = {"SI": "Si", "NO": "No", "EN PROCESO": "En proceso"}
+STATUS_LABELS_WITH_PLACEHOLDER = {PLACEHOLDER_OPTION: PLACEHOLDER_OPTION, **STATUS_LABELS}
 PAZ_OPTIONS = ["EN PROCESO", "SI", "NO"]
+PAZ_OPTIONS_WITH_PLACEHOLDER = [PLACEHOLDER_OPTION] + PAZ_OPTIONS
 PAZ_LABELS = {"EN PROCESO": "En proceso", "SI": "Sí", "NO": "No"}
+PAZ_LABELS_WITH_PLACEHOLDER = {PLACEHOLDER_OPTION: PLACEHOLDER_OPTION, **PAZ_LABELS}
 
 
 def _streamlit_rerun() -> None:
@@ -36,10 +41,18 @@ def _select_with_display(label: str, options: List[str], display_map: Dict[str, 
 def _format_list_label(option) -> str:
     if option is None:
         return ""
+    if option == PLACEHOLDER_OPTION:
+        return PLACEHOLDER_OPTION
     text = str(option)
     # Replace underscores with spaces and collapse duplicate spaces.
     cleaned = text.replace("_", " ").strip()
     return " ".join(cleaned.split()) if cleaned else ""
+
+
+def _selected_value(value: Optional[str]) -> str:
+    if value in (None, "", PLACEHOLDER_OPTION):
+        return ""
+    return str(value)
 
 
 def _all_widget_keys() -> List[str]:
@@ -83,45 +96,34 @@ def _reset_form(meta: dict) -> None:
     st.session_state["fecha"] = date.today()
     st.session_state["obs"] = ""
     st.session_state["similitud"] = 0
-    st.session_state["paz_y_salvo"] = "EN PROCESO"
-    st.session_state["ok_ref"] = "EN PROCESO"
-    st.session_state["ok_serv"] = "EN PROCESO"
+    st.session_state["paz_y_salvo"] = PLACEHOLDER_OPTION
+    st.session_state["ok_ref"] = PLACEHOLDER_OPTION
+    st.session_state["ok_serv"] = PLACEHOLDER_OPTION
 
-    fac_names = meta["df_fac"]["Nombre_Facultad"].dropna().astype(str).tolist()
-    st.session_state["facultad"] = fac_names[0] if fac_names else ""
-    if fac_names:
-        df_fac = meta["df_fac"]
-        df_prog = meta["df_prog"]
-        fac_code = int(df_fac.loc[df_fac["Nombre_Facultad"] == fac_names[0], "Codigo_Facultad"].iloc[0])
-        prog_field = "Código_Facultad" if "Código_Facultad" in df_prog.columns else "Códígo_Facultad"
-        progs = df_prog.loc[df_prog[prog_field] == fac_code, "Nombre_Programa"].dropna().astype(str).tolist()
-        st.session_state["programa"] = progs[0] if progs else ""
-    else:
-        st.session_state["programa"] = ""
+    st.session_state["facultad"] = PLACEHOLDER_OPTION
+    st.session_state["programa"] = PLACEHOLDER_OPTION
 
-    lists = meta["lists"]
-    st.session_state["rev_inicial"] = (lists.get("Revisión Inicial") or [""])[0]
-    rev_pl = lists.get("Revisión de Plantilla") or lists.get("Revisión plantilla") or [""]
-    st.session_state["rev_plantilla"] = rev_pl[0] if rev_pl else ""
-    st.session_state["esc_turnitin"] = (lists.get("Escaneado Turnitin") or [""])[0]
-    st.session_state["aprob_sim"] = (lists.get("Aprobados PyS") or [""])[0]
+    st.session_state["rev_inicial"] = PLACEHOLDER_OPTION
+    st.session_state["rev_plantilla"] = PLACEHOLDER_OPTION
+    st.session_state["esc_turnitin"] = PLACEHOLDER_OPTION
+    st.session_state["aprob_sim"] = PLACEHOLDER_OPTION
 
-    st.session_state["asesor_rec_0"] = (lists.get("Asesor_Recursos_Académicos") or [""])[0]
-    st.session_state["nombre_asesoria_0"] = (lists.get("Nombre_Asesoría") or [""])[0]
-    st.session_state["modalidad_0"] = (lists.get("Modalidad_Asesoría") or ["Virtual"])[0]
+    st.session_state["asesor_rec_0"] = PLACEHOLDER_OPTION
+    st.session_state["nombre_asesoria_0"] = PLACEHOLDER_OPTION
+    st.session_state["modalidad_0"] = PLACEHOLDER_OPTION
     st.session_state["asesor_metodologico_0"] = ""
-    st.session_state["modalidad2_0"] = ""
+    st.session_state["modalidad2_0"] = PLACEHOLDER_OPTION
 
 
 def _ensure_dynamic_defaults(meta: dict) -> None:
     lists = meta["lists"]
     n = int(st.session_state.get("asesorias_n", 1))
     for i in range(n):
-        st.session_state.setdefault(f"asesor_rec_{i}", (lists.get("Asesor_Recursos_Académicos") or [""])[0])
-        st.session_state.setdefault(f"nombre_asesoria_{i}", (lists.get("Nombre_Asesoría") or [""])[0])
-        st.session_state.setdefault(f"modalidad_{i}", (lists.get("Modalidad_Asesoría") or ["Virtual"])[0])
+        st.session_state.setdefault(f"asesor_rec_{i}", PLACEHOLDER_OPTION)
+        st.session_state.setdefault(f"nombre_asesoria_{i}", PLACEHOLDER_OPTION)
+        st.session_state.setdefault(f"modalidad_{i}", PLACEHOLDER_OPTION)
         st.session_state.setdefault(f"asesor_metodologico_{i}", "")
-        st.session_state.setdefault(f"modalidad2_{i}", "")
+        st.session_state.setdefault(f"modalidad2_{i}", PLACEHOLDER_OPTION)
 
 
 def _add_asesoria():
@@ -138,7 +140,7 @@ def _autofill_by_cedula(meta: dict, service: RegistroService):
         return
     st.session_state["nombre_usuario"] = str(df.loc[idx, "Nombre_Usuario"] or "")
     st.session_state["titulo"] = str(df.loc[idx, "Título_Trabajo_Grado"] or "")
-    st.session_state["paz_y_salvo"] = str(df.loc[idx, "Paz_y_Salvo"] or "EN PROCESO")
+    st.session_state["paz_y_salvo"] = str(df.loc[idx, "Paz_y_Salvo"] or PLACEHOLDER_OPTION)
 
     fac_norm = str(df.loc[idx, "Nombre_Facultad"] or "").strip()
     fac_display = meta["fac_norm_map"].get(fac_norm)
@@ -175,11 +177,22 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
         with colA:
             st.subheader("Formulario de registro")
             fac_names = df_fac["Nombre_Facultad"].dropna().astype(str).tolist()
-            fac_display = st.selectbox("Facultad", fac_names, index=0, key="facultad")
-            fac_code = int(df_fac.loc[df_fac["Nombre_Facultad"] == fac_display, "Codigo_Facultad"].iloc[0])
-            prog_field = "Código_Facultad" if "Código_Facultad" in df_prog.columns else "Códígo_Facultad"
-            progs = df_prog.loc[df_prog[prog_field] == fac_code, "Nombre_Programa"].dropna().astype(str).tolist() or [""]
-            prog_display = st.selectbox("Programa", progs, index=0, key="programa")
+            fac_options = [PLACEHOLDER_OPTION] + fac_names
+            fac_display = st.selectbox("Facultad", fac_options, key="facultad")
+
+            if fac_display == PLACEHOLDER_OPTION:
+                progs = []
+            else:
+                fac_code = int(df_fac.loc[df_fac["Nombre_Facultad"] == fac_display, "Codigo_Facultad"].iloc[0])
+                prog_field = "Código_Facultad" if "Código_Facultad" in df_prog.columns else "Códígo_Facultad"
+                progs = (
+                    df_prog.loc[df_prog[prog_field] == fac_code, "Nombre_Programa"].dropna().astype(str).tolist()
+                )
+
+            prog_options = [PLACEHOLDER_OPTION] + progs
+            if st.session_state.get("programa") not in prog_options:
+                st.session_state["programa"] = PLACEHOLDER_OPTION
+            prog_display = st.selectbox("Programa", prog_options, key="programa")
             c1, c2 = st.columns(2)
             with c1:
                 st.text_input(
@@ -197,57 +210,73 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
 
             c3, c4 = st.columns(2)
             with c3:
+                rev_inicial_opts = [PLACEHOLDER_OPTION] + list(lists.get("Revisión Inicial") or [])
                 rev_inicial = st.selectbox(
                     "Revisión inicial",
-                    lists.get("Revisión Inicial", [""]),
+                    rev_inicial_opts,
                     format_func=_format_list_label,
                     key="rev_inicial",
                 )
-                rev_pl_opts = lists.get("Revisión de Plantilla") or lists.get("Revisión plantilla") or [""]
+                rev_pl_opts = list(lists.get("Revisión de Plantilla") or lists.get("Revisión plantilla") or [])
                 rev_plantilla = st.selectbox(
-                    "Revisión plantilla", rev_pl_opts, format_func=_format_list_label, key="rev_plantilla"
+                    "Revisión plantilla",
+                    [PLACEHOLDER_OPTION] + rev_pl_opts,
+                    format_func=_format_list_label,
+                    key="rev_plantilla",
                 )
+                esc_turnitin_opts = [PLACEHOLDER_OPTION] + list(lists.get("Escaneado Turnitin") or [])
                 esc_turnitin = st.selectbox(
                     "Escaneado Turnitin",
-                    lists.get("Escaneado Turnitin", [""]),
+                    esc_turnitin_opts,
                     format_func=_format_list_label,
                     key="esc_turnitin",
                 )
             with c4:
-                st.session_state.setdefault("ok_serv", "EN PROCESO")
+                st.session_state.setdefault("ok_serv", PLACEHOLDER_OPTION)
                 ok_serv = _select_with_display(
                     "OK de servicios",
-                    STATUS_OPTIONS,
-                    STATUS_LABELS,
+                    STATUS_OPTIONS_WITH_PLACEHOLDER,
+                    STATUS_LABELS_WITH_PLACEHOLDER,
                     key="ok_serv",
                 )
-                st.session_state.setdefault("ok_ref", "EN PROCESO")
+                st.session_state.setdefault("ok_ref", PLACEHOLDER_OPTION)
                 ok_ref = _select_with_display(
                     "OK revisión de plantilla",
-                    STATUS_OPTIONS,
-                    STATUS_LABELS,
+                    STATUS_OPTIONS_WITH_PLACEHOLDER,
+                    STATUS_LABELS_WITH_PLACEHOLDER,
                     key="ok_ref",
                 )
                 similitud = st.number_input("% similitud", min_value=0, max_value=100, step=1, key="similitud")
 
+            aprob_sim_opts = [PLACEHOLDER_OPTION] + list(lists.get("Aprobados PyS") or [])
             aprob_sim = st.selectbox(
                 "Aprobación similitud",
-                lists.get("Aprobados PyS", [""]),
+                aprob_sim_opts,
                 format_func=_format_list_label,
                 key="aprob_sim",
             )
             obs = st.text_area("Observaciones", height=120, key="obs")
+            st.session_state.setdefault("paz_y_salvo", PLACEHOLDER_OPTION)
             paz_y_salvo = _select_with_display(
                 "Estudiante apto para paz y salvo",
-                PAZ_OPTIONS,
-                PAZ_LABELS,
+                PAZ_OPTIONS_WITH_PLACEHOLDER,
+                PAZ_LABELS_WITH_PLACEHOLDER,
                 key="paz_y_salvo",
             )
 
             principal = asesorias_payload[0] if asesorias_payload else {}
+            fac_value = _selected_value(fac_display)
+            prog_value = _selected_value(prog_display)
+            rev_inicial_value = _selected_value(rev_inicial)
+            rev_plantilla_value = _selected_value(rev_plantilla)
+            ok_ref_value = _selected_value(ok_ref)
+            ok_serv_value = _selected_value(ok_serv)
+            esc_turnitin_value = _selected_value(esc_turnitin)
+            aprob_sim_value = _selected_value(aprob_sim)
+            paz_y_salvo_value = _selected_value(paz_y_salvo)
             base_row = {
-                "Nombre_Facultad": utils.normalize_fac_name(fac_display),
-                "Nombre_Programa": prog_display,
+                "Nombre_Facultad": utils.normalize_fac_name(fac_value) if fac_value else "",
+                "Nombre_Programa": prog_value,
                 "Cédula": utils.norm_str(st.session_state.get("cedula")),
                 "Nombre_Usuario": utils.norm_str(st.session_state.get("nombre_usuario")),
                 "Asesor_Recursos_Académicos": principal.get("Asesor_Recursos_Académicos"),
@@ -259,19 +288,18 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                 "Detalle_Asesor_Metodologico": principal.get("Detalle_Asesor_Metodologico"),
                 "Título_Trabajo_Grado": utils.norm_str(titulo),
                 "Fecha": pd.to_datetime(fecha),
-                "Revisión Inicial": utils.norm_str(rev_inicial),
-                "Revisión plantilla": utils.norm_str(rev_plantilla),
-                "Ok_Referencistas": utils.norm_str(ok_ref),
-                "OK_Servicios": utils.norm_str(ok_serv),
+                "Revisión Inicial": utils.norm_str(rev_inicial_value),
+                "Revisión plantilla": utils.norm_str(rev_plantilla_value),
+                "Ok_Referencistas": utils.norm_str(ok_ref_value),
+                "OK_Servicios": utils.norm_str(ok_serv_value),
                 "Observaciones": utils.norm_str(obs),
-                "Escaneado Turnitin": utils.norm_str(esc_turnitin),
+                "Escaneado Turnitin": utils.norm_str(esc_turnitin_value),
                 "% similitud": int(similitud),
-                "Aprobación_Similitud": utils.norm_str(aprob_sim),
-                "Paz_y_Salvo": utils.norm_str(paz_y_salvo) or "EN PROCESO",
+                "Aprobación_Similitud": utils.norm_str(aprob_sim_value),
+                "Paz_y_Salvo": utils.norm_str(paz_y_salvo_value),
             }
 
-            col_btn1, col_btn2 = st.columns(2)
-            with col_btn1:
+            with st.container():
                 if st.button("💾 Guardar registro", type="primary"):
                     if not base_row["Cédula"] and not base_row["Nombre_Usuario"]:
                         st.warning("Escribe al menos el nombre o la cédula.")
@@ -279,18 +307,6 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                         try:
                             service.add_registro(base_row, asesorias_payload)
                             st.success("Registro guardado.")
-                            st.session_state["reset_pending"] = True
-                            _streamlit_rerun()
-                        except ValueError as exc:
-                            st.warning(str(exc))
-            with col_btn2:
-                if st.button("✏️ Modificar / Adicionar asesoría", type="secondary"):
-                    if not base_row["Cédula"] and not base_row["Nombre_Usuario"]:
-                        st.warning("Indica el nombre o la cédula para buscar el registro.")
-                    else:
-                        try:
-                            service.update_registro(base_row, asesorias_payload)
-                            st.success("Registro actualizado.")
                             st.session_state["reset_pending"] = True
                             _streamlit_rerun()
                         except ValueError as exc:
