@@ -171,7 +171,7 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
     df_prog = meta["df_prog"]
 
     with tab:
-        colA = st.container()
+        spacer_left, colA, spacer_right = st.columns([0.15, 0.7, 0.15])
         with colA:
             st.subheader("Formulario de registro")
             fac_names = df_fac["Nombre_Facultad"].dropna().astype(str).tolist()
@@ -193,60 +193,7 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
             titulo = st.text_input("Título trabajo de grado", key="titulo")
             fecha = st.date_input("Fecha", key="fecha", format="DD/MM/YYYY")
 
-            st.markdown("### Asesorías a registrar")
-            n = int(st.session_state.get("asesorias_n", 1))
-            cadd, _ = st.columns([0.3, 0.7])
-            with cadd:
-                st.button("Agregar asesoría", on_click=_add_asesoria, key="btn_add_asesoria")
-
             asesorias_payload = []
-            for i in range(n):
-                with st.expander(f"Asesoría #{i + 1}", expanded=(i == 0)):
-                    asesor_rec_i = st.selectbox(
-                        "Asesor Recursos Académicos",
-                        lists.get("Asesor_Recursos_Académicos", [""]),
-                        format_func=_format_list_label,
-                        key=f"asesor_rec_{i}",
-                    )
-                    nombre_asesoria_i = st.selectbox(
-                        "Nombre de la asesoría",
-                        lists.get("Nombre_Asesoría", [""]),
-                        format_func=_format_list_label,
-                        key=f"nombre_asesoria_{i}",
-                    )
-                    modalidad_i = st.selectbox(
-                        "Modalidad",
-                        lists.get("Modalidad_Asesoría", ["Virtual", "Presencial"]),
-                        format_func=_format_list_label,
-                        key=f"modalidad_{i}",
-                    )
-                    st.markdown("**Asesor metodológico**")
-                    asesor_met_i = st.text_input(
-                        "Asesor metodológico (digita el nombre)",
-                        placeholder="Ej: Carlos Rodriguez",
-                        key=f"asesor_metodologico_{i}",
-                    )
-                    modalidad2_i = st.selectbox(
-                        "Modalidad asesoría ", ["", "Virtual", "Presencial"], key=f"modalidad2_{i}"
-                    )
-                    if asesor_met_i and modalidad2_i:
-                        campo_h = f"{asesor_met_i.strip()}, {modalidad2_i}"
-                    elif asesor_met_i:
-                        campo_h = asesor_met_i.strip()
-                    else:
-                        campo_h = None
-                    asesorias_payload.append(
-                        {
-                            "Asesor_Recursos_Académicos": utils.norm_str(asesor_rec_i),
-                            "Nombre_Asesoría": utils.norm_str(nombre_asesoria_i),
-                            "Modalidad del Programa": utils.norm_str(modalidad_i),
-                            "Modalidad": utils.norm_str(modalidad_i),
-                            "Asesor_Metodológico": utils.norm_str(asesor_met_i),
-                            "Modalidad_Asesoría2": utils.norm_str(modalidad2_i),
-                            "Detalle_Asesor_Metodologico": utils.norm_str(campo_h),
-                            "Fecha": pd.to_datetime(fecha).strftime("%d-%m-%Y"),
-                        }
-                    )
 
             c3, c4 = st.columns(2)
             with c3:
