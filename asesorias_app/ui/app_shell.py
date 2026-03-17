@@ -325,20 +325,22 @@ setTimeout(function(){{
                 type="secondary",
             )
             extra_n = _extra_students_count()
+            extra_inputs = []
             for i in range(extra_n):
                 with st.expander(f"Estudiante adicional #{i + 1}", expanded=True):
                     col_extra, col_actions = st.columns([0.65, 0.35])
                     with col_extra:
-                        st.text_input(
+                        extra_doc_input = st.text_input(
                             "Documento/Id",
                             key=f"extra_doc_{i}",
                             placeholder="Ej: 1032331000",
                         )
-                        st.text_input(
+                        extra_name_input = st.text_input(
                             "Nombre y apellidos",
                             key=f"extra_name_{i}",
                             placeholder="Ej: Maria Gomez",
                         )
+                        extra_inputs.append((extra_doc_input, extra_name_input))
                     with col_actions:
                         st.button(
                             "Buscar",
@@ -359,7 +361,7 @@ setTimeout(function(){{
             with c1:
                 input_col, btn_col = st.columns([0.7, 0.3])
                 with input_col:
-                    st.text_input("Documento/Id *", placeholder="Ej: 1032331000", key="cedula")
+                    primary_doc_input = st.text_input("Documento/Id *", placeholder="Ej: 1032331000", key="cedula")
                 with btn_col:
                     st.button(
                         "Buscar",
@@ -368,7 +370,9 @@ setTimeout(function(){{
                         on_click=lambda: _autofill_by_cedula(meta, service),
                     )
             with c2:
-                st.text_input("Nombre y apellidos *", placeholder="Ej: Juan Pérez", key="nombre_usuario")
+                primary_name_input = st.text_input(
+                    "Nombre y apellidos *", placeholder="Ej: Juan Pérez", key="nombre_usuario"
+                )
             titulo = st.text_input("Título trabajo de grado", key="titulo")
             fecha = st.date_input("Fecha", key="fecha", format="DD/MM/YYYY")
 
@@ -463,27 +467,30 @@ setTimeout(function(){{
                 "Paz_y_Salvo": utils.norm_str(paz_y_salvo_value),
             }
 
+            primary_doc_raw = (primary_doc_input or "").strip()
+            primary_name_raw = (primary_name_input or "").strip()
             students_to_save = [
                 (
                     "principal",
-                    utils.norm_str(st.session_state.get("cedula")),
-                    utils.norm_str(st.session_state.get("nombre_usuario")),
+                    utils.norm_str(primary_doc_raw),
+                    utils.norm_str(primary_name_raw),
                 )
             ]
-            extra_n = _extra_students_count()
-            for i in range(extra_n):
-                doc_val = utils.norm_str(st.session_state.get(f"extra_doc_{i}"))
-                name_val = utils.norm_str(st.session_state.get(f"extra_name_{i}"))
+            for i, (doc_input, name_input) in enumerate(extra_inputs):
+                doc_raw = (doc_input or "").strip()
+                name_raw = (name_input or "").strip()
+                doc_val = utils.norm_str(doc_raw)
+                name_val = utils.norm_str(name_raw)
                 if doc_val or name_val:
-                    if not doc_val or not name_val:
+                    if not doc_raw or not name_raw:
                         st.warning(f"Completa documento y nombre para el estudiante adicional #{i + 1}.")
                         return
                     students_to_save.append((f"extra_{i}", doc_val, name_val))
 
             with st.container():
                 if st.button("💾 Guardar registro", type="primary"):
-                    first_doc = students_to_save[0][1]
-                    first_name = students_to_save[0][2]
+                    first_doc = (primary_doc_raw or "").strip()
+                    first_name = (primary_name_raw or "").strip()
                     if not first_doc:
                         st.warning("El campo Documento/Id es obligatorio.")
                     elif not first_name:
