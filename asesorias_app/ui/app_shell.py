@@ -56,6 +56,26 @@ def _selected_value(value: Optional[str]) -> str:
     return str(value)
 
 
+def _extra_students_count() -> int:
+    return int(st.session_state.get("extra_students_count", 0))
+
+
+def _add_extra_student() -> None:
+    st.session_state["extra_students_count"] = _extra_students_count() + 1
+
+
+def _remove_extra_student(index: int) -> None:
+    count = _extra_students_count()
+    if index < 0 or index >= count:
+        return
+    for j in range(index, count - 1):
+        st.session_state[f"extra_doc_{j}"] = st.session_state.get(f"extra_doc_{j + 1}", "")
+        st.session_state[f"extra_name_{j}"] = st.session_state.get(f"extra_name_{j + 1}", "")
+    st.session_state.pop(f"extra_doc_{count - 1}", None)
+    st.session_state.pop(f"extra_name_{count - 1}", None)
+    st.session_state["extra_students_count"] = max(count - 1, 0)
+
+
 def _clean_str(value) -> str:
     if value is None:
         return ""
@@ -76,8 +96,6 @@ def _all_widget_keys() -> List[str]:
     base = [
         "facultad",
         "programa",
-        "cedula",
-        "nombre_usuario",
         "titulo",
         "fecha",
         "rev_inicial",
@@ -95,10 +113,15 @@ def _all_widget_keys() -> List[str]:
         base += [
             f"asesor_rec_{i}",
             f"nombre_asesoria_{i}",
-            f"modalidad_{i}",
-            f"asesor_metodologico_{i}",
-            f"modalidad2_{i}",
-        ]
+        f"modalidad_{i}",
+        f"asesor_metodologico_{i}",
+        f"modalidad2_{i}",
+    ]
+    base += ["cedula", "nombre_usuario"]
+    extra_n = _extra_students_count()
+    base.append("extra_students_count")
+    for i in range(extra_n):
+        base += [f"extra_doc_{i}", f"extra_name_{i}"]
     return base
 
 
@@ -130,6 +153,7 @@ def _reset_form(meta: dict) -> None:
     st.session_state["modalidad_0"] = PLACEHOLDER_OPTION
     st.session_state["asesor_metodologico_0"] = ""
     st.session_state["modalidad2_0"] = PLACEHOLDER_OPTION
+    st.session_state["extra_students_count"] = 0
 
 
 def _ensure_dynamic_defaults(meta: dict) -> None:
@@ -141,14 +165,20 @@ def _ensure_dynamic_defaults(meta: dict) -> None:
         st.session_state.setdefault(f"modalidad_{i}", PLACEHOLDER_OPTION)
         st.session_state.setdefault(f"asesor_metodologico_{i}", "")
         st.session_state.setdefault(f"modalidad2_{i}", PLACEHOLDER_OPTION)
+    extra_n = _extra_students_count()
+    for i in range(extra_n):
+        st.session_state.setdefault(f"extra_doc_{i}", "")
+        st.session_state.setdefault(f"extra_name_{i}", "")
 
 
 def _add_asesoria():
     st.session_state["asesorias_n"] = int(st.session_state.get("asesorias_n", 1)) + 1
 
 
-def _autofill_by_cedula(meta: dict, service: RegistroService):
-    ced = st.session_state.get("cedula", "").strip()
+def _autofill_by_cedula(
+    meta: dict, service: RegistroService, doc_key: str = "cedula", name_key: str = "nombre_usuario"
+):
+    ced = st.session_state.get(doc_key, "").strip()
     if not ced:
         return
     df = service.load_registro()
@@ -161,7 +191,9 @@ def _autofill_by_cedula(meta: dict, service: RegistroService):
         }
         return
     row = df.loc[idx]
-    st.session_state["nombre_usuario"] = _clean_str(row.get("Nombre_Usuario"))
+    doc_value = _clean_str(row.get("Cédula") or row.get("CǸdula") or ced)
+    st.session_state[doc_key] = doc_value
+    st.session_state[name_key] = _clean_str(row.get("Nombre_Usuario"))
     st.session_state["titulo"] = _clean_str(row.get("Título_Trabajo_Grado"))
     st.session_state["obs"] = _clean_str(row.get("Observaciones"))
     _set_select_state("paz_y_salvo", row.get("Paz_y_Salvo"))
@@ -284,6 +316,45 @@ setTimeout(function(){{
             if st.session_state.get("programa") not in prog_options:
                 st.session_state["programa"] = PLACEHOLDER_OPTION
             prog_display = st.selectbox("Programa", prog_options, key="programa")
+
+            st.caption("Estudiantes adicionales (opcional)")
+            st.button(
+                "➕ Agregar estudiante",
+                on_click=_add_extra_student,
+                key="btn_add_extra_student",
+                type="secondary",
+            )
+            extra_n = _extra_students_count()
+            for i in range(extra_n):
+                with st.expander(f"Estudiante adicional #{i + 1}", expanded=True):
+                    col_extra, col_actions = st.columns([0.65, 0.35])
+                    with col_extra:
+                        st.text_input(
+                            "Documento/Id",
+                            key=f"extra_doc_{i}",
+                            placeholder="Ej: 1032331000",
+                        )
+                        st.text_input(
+                            "Nombre y apellidos",
+                            key=f"extra_name_{i}",
+                            placeholder="Ej: Maria Gomez",
+                        )
+                    with col_actions:
+                        st.button(
+                            "Buscar",
+                            key=f"btn_buscar_extra_{i}",
+                            type="secondary",
+                            on_click=lambda idx=i: _autofill_by_cedula(
+                                meta, service, doc_key=f"extra_doc_{idx}", name_key=f"extra_name_{idx}"
+                            ),
+                        )
+                        st.button(
+                            "Eliminar",
+                            key=f"btn_remove_extra_{i}",
+                            type="secondary",
+                            on_click=lambda idx=i: _remove_extra_student(idx),
+                        )
+
             c1, c2 = st.columns(2)
             with c1:
                 input_col, btn_col = st.columns([0.7, 0.3])
@@ -369,11 +440,9 @@ setTimeout(function(){{
             esc_turnitin_value = _selected_value(esc_turnitin)
             aprob_sim_value = _selected_value(aprob_sim)
             paz_y_salvo_value = _selected_value(paz_y_salvo)
-            base_row = {
+            base_row_template = {
                 "Nombre_Facultad": utils.normalize_fac_name(fac_value) if fac_value else "",
                 "Nombre_Programa": prog_value,
-                "Cédula": utils.norm_str(st.session_state.get("cedula")),
-                "Nombre_Usuario": utils.norm_str(st.session_state.get("nombre_usuario")),
                 "Asesor_Recursos_Académicos": principal.get("Asesor_Recursos_Académicos"),
                 "Nombre_Asesoría": principal.get("Nombre_Asesoría"),
                 "Modalidad del Programa": principal.get("Modalidad del Programa") or principal.get("Modalidad"),
@@ -394,20 +463,52 @@ setTimeout(function(){{
                 "Paz_y_Salvo": utils.norm_str(paz_y_salvo_value),
             }
 
+            students_to_save = [
+                (
+                    "principal",
+                    utils.norm_str(st.session_state.get("cedula")),
+                    utils.norm_str(st.session_state.get("nombre_usuario")),
+                )
+            ]
+            extra_n = _extra_students_count()
+            for i in range(extra_n):
+                doc_val = utils.norm_str(st.session_state.get(f"extra_doc_{i}"))
+                name_val = utils.norm_str(st.session_state.get(f"extra_name_{i}"))
+                if doc_val or name_val:
+                    if not doc_val or not name_val:
+                        st.warning(f"Completa documento y nombre para el estudiante adicional #{i + 1}.")
+                        return
+                    students_to_save.append((f"extra_{i}", doc_val, name_val))
+
             with st.container():
                 if st.button("💾 Guardar registro", type="primary"):
-                    if not base_row["Cédula"]:
+                    first_doc = students_to_save[0][1]
+                    first_name = students_to_save[0][2]
+                    if not first_doc:
                         st.warning("El campo Documento/Id es obligatorio.")
-                    elif not base_row["Nombre_Usuario"]:
+                    elif not first_name:
                         st.warning("El campo Nombre y apellidos es obligatorio.")
                     else:
-                        try:
-                            service.add_registro(base_row, asesorias_payload)
-                            st.success("Registro guardado.")
+                        successes = 0
+                        errors = []
+                        for _, doc_val, name_val in students_to_save:
+                            if not doc_val and not name_val:
+                                continue
+                            row = base_row_template.copy()
+                            row["Cédula"] = doc_val
+                            row["Nombre_Usuario"] = name_val
+                            try:
+                                service.add_registro(row, asesorias_payload)
+                                successes += 1
+                            except ValueError as exc:
+                                errors.append(f"{name_val or doc_val}: {exc}")
+                        if successes:
+                            st.success(f"Registro guardado para {successes} estudiante(s).")
+                        for err in errors:
+                            st.warning(err)
+                        if successes and not errors:
                             st.session_state["reset_pending"] = True
                             _streamlit_rerun()
-                        except ValueError as exc:
-                            st.warning(str(exc))
 
 
 
