@@ -324,22 +324,24 @@ setTimeout(function(){{
             prog_display = st.selectbox("Programa", prog_options, key="programa")
 
             st.caption("Estudiantes adicionales (opcional)")
-            st.button(
-                "➕ Agregar estudiante",
-                on_click=_add_extra_student,
-                key="btn_add_extra_student",
-                type="secondary",
-            )
+            btn_add_col, label_add_col = st.columns([0.1, 0.9])
+            with btn_add_col:
+                st.button("➕", on_click=_add_extra_student, key="btn_add_extra_student", type="secondary")
+            with label_add_col:
+                st.caption("Agregar estudiante")
             extra_n = _extra_students_count()
             extra_inputs = []
             for i in range(extra_n):
                 with st.expander(f"Estudiante adicional #{i + 1}", expanded=True):
-                    col_extra, col_actions = st.columns([0.65, 0.35])
+                    col_extra, col_actions = st.columns([0.78, 0.22])
                     with col_extra:
                         extra_doc_input = st.text_input(
                             "Documento/Id",
                             key=f"extra_doc_{i}",
                             placeholder="Ej: 1032331000",
+                            on_change=lambda idx=i: _autofill_by_cedula(
+                                meta, service, doc_key=f"extra_doc_{idx}", name_key=f"extra_name_{idx}", show_modal=False
+                            ),
                         )
                         extra_name_input = st.text_input(
                             "Nombre y apellidos",
@@ -349,14 +351,6 @@ setTimeout(function(){{
                         extra_inputs.append((extra_doc_input, extra_name_input))
                     with col_actions:
                         st.button(
-                            "Buscar",
-                            key=f"btn_buscar_extra_{i}",
-                            type="secondary",
-                            on_click=lambda idx=i: _autofill_by_cedula(
-                                meta, service, doc_key=f"extra_doc_{idx}", name_key=f"extra_name_{idx}"
-                            ),
-                        )
-                        st.button(
                             "Eliminar",
                             key=f"btn_remove_extra_{i}",
                             type="secondary",
@@ -365,16 +359,12 @@ setTimeout(function(){{
 
             c1, c2 = st.columns(2)
             with c1:
-                input_col, btn_col = st.columns([0.7, 0.3])
-                with input_col:
-                    primary_doc_input = st.text_input("Documento/Id *", placeholder="Ej: 1032331000", key="cedula")
-                with btn_col:
-                    st.button(
-                        "Buscar",
-                        type="secondary",
-                        key="btn_buscar_cedula",
-                        on_click=lambda: _autofill_by_cedula(meta, service),
-                    )
+                primary_doc_input = st.text_input(
+                    "Documento/Id *",
+                    placeholder="Ej: 1032331000",
+                    key="cedula",
+                    on_change=lambda: _autofill_by_cedula(meta, service),
+                )
             with c2:
                 primary_name_input = st.text_input(
                     "Nombre y apellidos *", placeholder="Ej: Juan Pérez", key="nombre_usuario"
@@ -494,7 +484,10 @@ setTimeout(function(){{
                     students_to_save.append((f"extra_{i}", doc_val, name_val))
 
             with st.container():
-                if st.button("💾 Guardar registro", type="primary"):
+                saving = st.session_state.get("saving", False)
+                if saving:
+                    st.info("Guardando registro...")
+                if st.button("💾 Guardar registro", type="primary", disabled=saving):
                     first_doc = (primary_doc_raw or "").strip()
                     first_name = (primary_name_raw or "").strip()
                     if not first_doc:
@@ -502,19 +495,22 @@ setTimeout(function(){{
                     elif not first_name:
                         st.warning("El campo Nombre y apellidos es obligatorio.")
                     else:
+                        st.session_state["saving"] = True
                         successes = 0
                         errors = []
-                        for _, doc_val, name_val in students_to_save:
-                            if not doc_val and not name_val:
-                                continue
-                            row = base_row_template.copy()
-                            row["Cédula"] = doc_val
-                            row["Nombre_Usuario"] = name_val
-                            try:
-                                service.add_registro(row, asesorias_payload)
-                                successes += 1
-                            except ValueError as exc:
-                                errors.append(f"{name_val or doc_val}: {exc}")
+                        with st.spinner("Guardando registro..."):
+                            for _, doc_val, name_val in students_to_save:
+                                if not doc_val and not name_val:
+                                    continue
+                                row = base_row_template.copy()
+                                row["Cédula"] = doc_val
+                                row["Nombre_Usuario"] = name_val
+                                try:
+                                    service.add_registro(row, asesorias_payload)
+                                    successes += 1
+                                except ValueError as exc:
+                                    errors.append(f"{name_val or doc_val}: {exc}")
+                        st.session_state["saving"] = False
                         if successes:
                             st.success(f"Registro guardado para {successes} estudiante(s).")
                         for err in errors:
