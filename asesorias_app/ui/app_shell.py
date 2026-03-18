@@ -176,7 +176,11 @@ def _add_asesoria():
 
 
 def _autofill_by_cedula(
-    meta: dict, service: RegistroService, doc_key: str = "cedula", name_key: str = "nombre_usuario"
+    meta: dict,
+    service: RegistroService,
+    doc_key: str = "cedula",
+    name_key: str = "nombre_usuario",
+    show_modal: bool = True,
 ):
     ced = st.session_state.get(doc_key, "").strip()
     if not ced:
@@ -184,11 +188,12 @@ def _autofill_by_cedula(
     df = service.load_registro()
     idx = service.find_student_index(df, cedula=ced, nombre=None)
     if idx is None:
-        st.session_state["search_modal"] = {
-            "message": "El usuario no se encuentra registrado, puede crearlo.",
-            "success": False,
-            "expires_at": datetime.utcnow().timestamp() + 10,
-        }
+        if show_modal:
+            st.session_state["search_modal"] = {
+                "message": "El usuario no se encuentra registrado, puede crearlo.",
+                "success": False,
+                "expires_at": datetime.utcnow().timestamp() + 10,
+            }
         return
     row = df.loc[idx]
     doc_value = _clean_str(row.get("Cédula") or row.get("CǸdula") or ced)
@@ -229,11 +234,12 @@ def _autofill_by_cedula(
     prog = _clean_str(row.get("Nombre_Programa"))
     st.session_state["programa"] = prog or PLACEHOLDER_OPTION
 
-    st.session_state["search_modal"] = {
-        "message": "El usuario ya se encuentra registrado.",
-        "success": True,
-        "expires_at": datetime.utcnow().timestamp() + 10,
-    }
+    if show_modal:
+        st.session_state["search_modal"] = {
+            "message": "El usuario ya se encuentra registrado.",
+            "success": True,
+            "expires_at": datetime.utcnow().timestamp() + 10,
+        }
 
 
 def _render_tabs(service: RegistroService, meta: dict) -> None:
@@ -248,7 +254,7 @@ def _render_tabs(service: RegistroService, meta: dict) -> None:
 
     tabs = st.tabs(["✚ Registrar asesoría", "🔍 Consultar usuario", "📂 Carga masiva"])
     _tab_registro(tabs[0], service, meta)
-    _tab_consulta(tabs[1], service)
+    _tab_consulta(tabs[1], service, meta)
     _tab_masivo(tabs[2], service)
 
 
@@ -519,9 +525,9 @@ setTimeout(function(){{
 
 
 
-def _tab_consulta(tab, service: RegistroService):
+def _tab_consulta(tab, service: RegistroService, meta: dict):
     with tab:
-        st.subheader("Buscar usuario, ver total, borrar y descargar Excel")
+        st.subheader("Buscar usuario registrado")
         df_latest = service.load_registro()
         search_cols = st.columns([0.85, 0.15])
         with search_cols[0]:
@@ -584,16 +590,33 @@ def _tab_consulta(tab, service: RegistroService):
             sel_idx = sel[0]
             row = df_latest.loc[sel_idx]
 
-            cinfo1, cinfo2, cinfo3 = st.columns(3)
-            with cinfo1:
-                st.metric("Estudiante", str(row.get("Nombre_Usuario", "")))
-                st.write(f"**Cédula:** {row.get('Cédula','')}")
-            with cinfo2:
-                st.metric("Total asesorías", int(row.get("Total_Asesorías", 0) or 0))
-                st.write(f"**Paz y salvo:** {row.get('Paz_y_Salvo','')}")
-            with cinfo3:
-                st.write("**Título trabajo de grado:**")
-                st.write(str(row.get("Título_Trabajo_Grado", "")))
+            detail_df = pd.DataFrame(
+                [
+                    {
+                        "Documento/Id": row.get("Cédula", ""),
+                        "Nombre": row.get("Nombre_Usuario", ""),
+                        "Facultad": row.get("Nombre_Facultad", ""),
+                        "Programa": row.get("Nombre_Programa", ""),
+                        "Total asesorías": row.get("Total_Asesorías", 0),
+                        "Paz y salvo": row.get("Paz_y_Salvo", ""),
+                        "Título trabajo de grado": row.get("Título_Trabajo_Grado", ""),
+                    }
+                ]
+            )
+            st.dataframe(detail_df, use_container_width=True, hide_index=True)
+
+            action_cols = st.columns([0.4, 0.4])
+            with action_cols[0]:
+                if st.button("✏️ Modificar registro", key=f"btn_edit_{sel_idx}"):
+                    st.session_state["cedula"] = str(row.get("Cédula", "")).strip()
+                    _autofill_by_cedula(meta, service, show_modal=False)
+                    st.success("Formulario precargado en la pestaña Registrar.")
+            with action_cols[1]:
+                confirm_del = st.checkbox("Confirmar eliminación total", key=f"chk_del_total_{sel_idx}")
+                if st.button("🗑 Eliminar registro", key=f"btn_del_total_{sel_idx}", disabled=not confirm_del):
+                    service.delete_registro(sel_idx)
+                    st.success("Registro eliminado correctamente.")
+                    _streamlit_rerun()
 
             hist_df = service.history_table_from_row(row)
             st.dataframe(hist_df, use_container_width=True)
@@ -601,6 +624,8 @@ def _tab_consulta(tab, service: RegistroService):
             st.markdown("### 🧹 Eliminar una asesoría del historial")
             if len(hist_df) == 0:
                 st.info("Este estudiante no tiene asesorías registradas.")
+            elif len(hist_df) == 1:
+                st.info("Este estudiante solo tiene una asesoría registrada; no es posible eliminarla de forma individual.")
             else:
                 n_values = hist_df["N"].tolist()
                 n_to_delete = st.selectbox("Selecciona el número de la asesoría a eliminar", n_values)
@@ -629,28 +654,6 @@ def _tab_consulta(tab, service: RegistroService):
                 file_name=f"historial_{str(row.get('Cédula','')).strip() or 'estudiante'}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
-
-        st.divider()
-        st.markdown("### 🗑 Eliminar registro (estudiante)")
-        if len(filtered) == 0:
-            st.info("No hay registros para eliminar con el filtro actual.")
-        else:
-            options_del = []
-            for idx, row in filtered.iterrows():
-                label = f"[{idx}] {row.get('Nombre_Usuario','')} | {row.get('Cédula','')} | Total: {row.get('Total_Asesorías',0)}"
-                options_del.append((int(idx), label))
-            selected = st.selectbox(
-                "Selecciona el estudiante (fila) a eliminar",
-                options_del,
-                format_func=lambda x: x[1],
-                key="del_select",
-            )
-            idx_to_delete = selected[0]
-            confirm = st.checkbox("Confirmo que deseo eliminar este registro", key="del_confirm")
-            if st.button("Eliminar registro seleccionado", type="primary", disabled=not confirm):
-                service.delete_registro(idx_to_delete)
-                st.success("Registro eliminado correctamente.")
-                _streamlit_rerun()
 
         st.divider()
         st.markdown("### ⬇️ Descargar Excel actual")
