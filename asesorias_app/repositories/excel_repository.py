@@ -13,29 +13,23 @@ from asesorias_app import config
 
 
 def normalize_registro_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Garantiza columnas esperadas, orden y compatibilidad con versiones antiguas."""
+    """Garantiza columnas esperadas y descarta campos obsoletos."""
     df = df.copy()
-    legacy_col = getattr(config, "LEGACY_DETALLE_COLUMN", "")
-    if legacy_col and legacy_col in df.columns:
-        legacy_series = df.pop(legacy_col).fillna("")
-        split_df = legacy_series.astype(str).str.split(",", n=1, expand=True)
-        first = split_df[0].str.strip() if 0 in split_df else pd.Series([""] * len(df), index=df.index)
-        if split_df.shape[1] > 1:
-            second = split_df[1].str.strip()
-        else:
-            second = pd.Series([""] * len(df), index=df.index)
-
-        if "Asesor_Metodológico" not in df.columns:
-            df["Asesor_Metodológico"] = first
-        else:
-            mask = df["Asesor_Metodológico"].isna() | (df["Asesor_Metodológico"].astype(str).str.strip() == "")
-            df.loc[mask, "Asesor_Metodológico"] = first[mask]
-
-        if "Modalidad_Asesoría2" not in df.columns:
-            df["Modalidad_Asesoría2"] = second
-        else:
-            mask = df["Modalidad_Asesoría2"].isna() | (df["Modalidad_Asesoría2"].astype(str).str.strip() == "")
-            df.loc[mask, "Modalidad_Asesoría2"] = second[mask]
+    aliases = getattr(config, "COLUMN_ALIASES", {})
+    if aliases:
+        rename_map = {}
+        for alias, canonical in aliases.items():
+            if alias not in df.columns:
+                continue
+            if canonical in df.columns:
+                df = df.drop(columns=[alias], errors="ignore")
+            else:
+                rename_map[alias] = canonical
+        if rename_map:
+            df = df.rename(columns=rename_map)
+    removed = getattr(config, "REMOVED_REGISTRO_COLUMNS", [])
+    if removed:
+        df = df.drop(columns=removed, errors="ignore")
 
     for col in config.REGISTRO_COLUMNS:
         if col not in df.columns:
