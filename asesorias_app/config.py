@@ -35,18 +35,13 @@ GOOGLE_SHEETS_SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-LEGACY_DETALLE_COLUMN = "Asesor_Metodológico, Modalidad_Asesoría2, Asesor_Metodológico, Modalidad_Asesoría2"
 REGISTRO_COLUMNS = [
     "Cédula",
     "Nombre_Usuario",
+    "Correo_Electronico",
     "Nombre_Facultad",
     "Nombre_Programa",
     "Modalidad del Programa",
-    "Asesor_Recursos_Académicos",
-    "Nombre_Asesoría",
-    "Modalidad",
-    "Asesor_Metodológico",
-    "Modalidad_Asesoría2",
     "Título_Trabajo_Grado",
     "Fecha",
     "Revisión Inicial",
@@ -57,13 +52,29 @@ REGISTRO_COLUMNS = [
     "Escaneado Turnitin",
     "% similitud",
     "Aprobación_Similitud",
+    "Paz_y_Salvo",
+]
+
+REMOVED_REGISTRO_COLUMNS = [
+    "Modalidad",
+    "Modalidad_Asesoría2",
     "Total_Asesorías",
     "Historial_Asesorías",
     "Historial_Asesores",
     "Historial_Fechas",
-    "Paz_y_Salvo",
     "Paz_y_SSalvo",
     "Historial_Asesor_Recursos",
     "Historial_Asesor_Metodologico",
     "Detalle_Asesor_Metodologico",
+    "Asesor_Recursos_Académicos",
+    "Nombre_Asesoría",
+    "Asesor_Metodológico",
 ]
+
+COLUMN_ALIASES = {
+    "Correo electrónico": "Correo_Electronico",
+    "Correo electronico": "Correo_Electronico",
+    "Cedula": "Cédula",
+    "Nombre usuario": "Nombre_Usuario",
+    "Nombre_usuario": "Nombre_Usuario",
+}

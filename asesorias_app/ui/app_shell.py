@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import io
 from datetime import date, datetime
 from typing import Dict, List, Optional
 
@@ -24,6 +23,7 @@ PAZ_OPTIONS = ["EN PROCESO", "SI", "NO"]
 PAZ_OPTIONS_WITH_PLACEHOLDER = [PLACEHOLDER_OPTION] + PAZ_OPTIONS
 PAZ_LABELS = {"EN PROCESO": "En proceso", "SI": "Sí", "NO": "No"}
 PAZ_LABELS_WITH_PLACEHOLDER = {PLACEHOLDER_OPTION: PLACEHOLDER_OPTION, **PAZ_LABELS}
+HIDDEN_COLUMNS = {"Asesor_Recursos_Académicos", "Nombre_Asesoría", "Asesor_Metodológico"}
 
 
 def _streamlit_rerun() -> None:
@@ -71,8 +71,10 @@ def _remove_extra_student(index: int) -> None:
     for j in range(index, count - 1):
         st.session_state[f"extra_doc_{j}"] = st.session_state.get(f"extra_doc_{j + 1}", "")
         st.session_state[f"extra_name_{j}"] = st.session_state.get(f"extra_name_{j + 1}", "")
+        st.session_state[f"extra_email_{j}"] = st.session_state.get(f"extra_email_{j + 1}", "")
     st.session_state.pop(f"extra_doc_{count - 1}", None)
     st.session_state.pop(f"extra_name_{count - 1}", None)
+    st.session_state.pop(f"extra_email_{count - 1}", None)
     st.session_state["extra_students_count"] = max(count - 1, 0)
 
 
@@ -97,6 +99,8 @@ def _all_widget_keys() -> List[str]:
         "facultad",
         "programa",
         "titulo",
+        "correo",
+        "asesor_met_general",
         "fecha",
         "rev_inicial",
         "rev_plantilla",
@@ -113,15 +117,13 @@ def _all_widget_keys() -> List[str]:
         base += [
             f"asesor_rec_{i}",
             f"nombre_asesoria_{i}",
-        f"modalidad_{i}",
-        f"asesor_metodologico_{i}",
-        f"modalidad2_{i}",
-    ]
+            f"asesor_metodologico_{i}",
+        ]
     base += ["cedula", "nombre_usuario"]
     extra_n = _extra_students_count()
     base.append("extra_students_count")
     for i in range(extra_n):
-        base += [f"extra_doc_{i}", f"extra_name_{i}"]
+        base += [f"extra_doc_{i}", f"extra_name_{i}", f"extra_email_{i}"]
     return base
 
 
@@ -132,6 +134,8 @@ def _reset_form(meta: dict) -> None:
     st.session_state["asesorias_n"] = 1
     st.session_state["cedula"] = ""
     st.session_state["nombre_usuario"] = ""
+    st.session_state["correo"] = ""
+    st.session_state["asesor_met_general"] = ""
     st.session_state["titulo"] = ""
     st.session_state["fecha"] = date.today()
     st.session_state["obs"] = ""
@@ -150,9 +154,7 @@ def _reset_form(meta: dict) -> None:
 
     st.session_state["asesor_rec_0"] = PLACEHOLDER_OPTION
     st.session_state["nombre_asesoria_0"] = PLACEHOLDER_OPTION
-    st.session_state["modalidad_0"] = PLACEHOLDER_OPTION
     st.session_state["asesor_metodologico_0"] = ""
-    st.session_state["modalidad2_0"] = PLACEHOLDER_OPTION
     st.session_state["extra_students_count"] = 0
 
 
@@ -162,13 +164,12 @@ def _ensure_dynamic_defaults(meta: dict) -> None:
     for i in range(n):
         st.session_state.setdefault(f"asesor_rec_{i}", PLACEHOLDER_OPTION)
         st.session_state.setdefault(f"nombre_asesoria_{i}", PLACEHOLDER_OPTION)
-        st.session_state.setdefault(f"modalidad_{i}", PLACEHOLDER_OPTION)
         st.session_state.setdefault(f"asesor_metodologico_{i}", "")
-        st.session_state.setdefault(f"modalidad2_{i}", PLACEHOLDER_OPTION)
     extra_n = _extra_students_count()
     for i in range(extra_n):
         st.session_state.setdefault(f"extra_doc_{i}", "")
         st.session_state.setdefault(f"extra_name_{i}", "")
+        st.session_state.setdefault(f"extra_email_{i}", "")
 
 
 def _add_asesoria():
@@ -252,10 +253,71 @@ def _render_tabs(service: RegistroService, meta: dict) -> None:
 
     _ensure_dynamic_defaults(meta)
 
-    tabs = st.tabs(["✚ Registrar asesoría", "🔍 Consultar usuario", "📂 Carga masiva"])
-    _tab_registro(tabs[0], service, meta)
-    _tab_consulta(tabs[1], service, meta)
-    _tab_masivo(tabs[2], service)
+    st.markdown(
+        """
+<div style="
+    background-color: #0f172a;
+    color: #f8fafc;
+    padding: 1rem 1.5rem;
+    border-radius: 0.6rem;
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: 0.015em;
+    text-align: center;
+    margin-bottom: 1rem;
+">
+    Registro y seguimiento de tesis
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    menu_col, content_col = st.columns([0.24, 0.76])
+    menu_items = {
+        "register": "Registrar tesis",
+        "consult": "Consultar usuario",
+    }
+    query_params = st.query_params
+    current_page = query_params.get("page", "register")
+    if isinstance(current_page, list):
+        current_page = current_page[0] if current_page else "register"
+    if current_page not in menu_items:
+        current_page = "register"
+    st.session_state["current_page"] = current_page
+
+    with menu_col:
+        with st.expander("Menú", expanded=True):
+            st.markdown(
+                """
+<style>
+a.menu-link {
+    color: #f8fafc;
+    text-decoration: none;
+    display: block;
+    padding: 0.3rem 0;
+    font-weight: 600;
+}
+a.menu-link.active {
+    color: #0f172a;
+    border-bottom: 2px solid #c8f560;
+    padding-left: 0;
+}
+</style>
+""",
+                unsafe_allow_html=True,
+            )
+            for key, label in menu_items.items():
+                is_active = st.session_state.get("current_page") == key
+                href = f"?page={key}"
+                classes = "menu-link active" if is_active else "menu-link"
+                st.markdown(f'<a class="{classes}" href="{href}" target="_self">{label}</a>', unsafe_allow_html=True)
+
+    with content_col:
+        current = st.session_state.get("current_page", "register")
+        if current == "register":
+            _tab_registro(content_col, service, meta)
+        elif current == "consult":
+            _tab_consulta(content_col, service, meta)
 
 
 def _tab_registro(tab, service: RegistroService, meta: dict):
@@ -266,6 +328,10 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
     with tab:
         spacer_left, colA, spacer_right = st.columns([0.15, 0.7, 0.15])
         with colA:
+            pending_doc = st.session_state.pop("pending_prefill_doc", None)
+            if pending_doc:
+                st.session_state["cedula"] = pending_doc
+                _autofill_by_cedula(meta, service, doc_key="cedula", name_key="nombre_usuario", show_modal=False)
             st.subheader("Formulario de registro")
             modal_data = st.session_state.get("search_modal")
             if modal_data:
@@ -278,6 +344,7 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                     success = modal_data.get("success")
                     bg_color = "rgba(16, 185, 129, 0.6)" if success else "rgba(245, 158, 11, 0.7)"
                     border_color = "#16a34a" if success else "#f97316"
+                    text_color = "#ffffff" if success else "#1f2937"
                     modal_id = f"search_modal_{int(expires_at or now_ts)}"
                     components.html(
                         f"""
@@ -286,7 +353,7 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
     border-radius: 0.65rem;
     border: 1px solid {border_color};
     background-color: {bg_color};
-    color: #ffffff;
+    color: {text_color};
     font-weight: 600;
     font-size: 1rem;
     letter-spacing: 0.01em;
@@ -305,6 +372,10 @@ setTimeout(function(){{
 """,
                         height=70,
                     )
+            editing_target = st.session_state.get("editing_target")
+            if editing_target:
+                edit_name = editing_target.get("nombre") or editing_target.get("cedula", "")
+                st.info(f"Editando registro existente: {edit_name}. Guarda los cambios para actualizarlo.")
             fac_names = df_fac["Nombre_Facultad"].dropna().astype(str).tolist()
             fac_options = [PLACEHOLDER_OPTION] + fac_names
             fac_display = st.selectbox("Facultad", fac_options, key="facultad")
@@ -322,6 +393,11 @@ setTimeout(function(){{
             if st.session_state.get("programa") not in prog_options:
                 st.session_state["programa"] = PLACEHOLDER_OPTION
             prog_display = st.selectbox("Programa", prog_options, key="programa")
+            modalidad_programa = st.selectbox(
+                "Modalidad del programa",
+                [PLACEHOLDER_OPTION, "Virtual", "Presencial"],
+                key="modalidad_programa",
+            )
 
             st.caption("Estudiantes adicionales (opcional)")
             btn_add_col, label_add_col = st.columns([0.1, 0.9])
@@ -348,7 +424,12 @@ setTimeout(function(){{
                             key=f"extra_name_{i}",
                             placeholder="Ej: Maria Gomez",
                         )
-                        extra_inputs.append((extra_doc_input, extra_name_input))
+                        extra_email_input = st.text_input(
+                            "Correo electrónico",
+                            key=f"extra_email_{i}",
+                            placeholder="Ej: usuario@uni.edu",
+                        )
+                        extra_inputs.append((extra_doc_input, extra_name_input, extra_email_input))
                     with col_actions:
                         st.button(
                             "Eliminar",
@@ -369,6 +450,8 @@ setTimeout(function(){{
                 primary_name_input = st.text_input(
                     "Nombre y apellidos *", placeholder="Ej: Juan Pérez", key="nombre_usuario"
                 )
+            correo = st.text_input("Correo electrónico *", placeholder="Ej: usuario@uni.edu", key="correo")
+            asesor_met_general = st.text_input("Asesor metodológico", key="asesor_met_general")
             titulo = st.text_input("Título trabajo de grado", key="titulo")
             fecha = st.date_input("Fecha", key="fecha", format="DD/MM/YYYY")
 
@@ -430,7 +513,6 @@ setTimeout(function(){{
                 key="paz_y_salvo",
             )
 
-            principal = asesorias_payload[0] if asesorias_payload else {}
             fac_value = _selected_value(fac_display)
             prog_value = _selected_value(prog_display)
             rev_inicial_value = _selected_value(rev_inicial)
@@ -443,13 +525,8 @@ setTimeout(function(){{
             base_row_template = {
                 "Nombre_Facultad": utils.normalize_fac_name(fac_value) if fac_value else "",
                 "Nombre_Programa": prog_value,
-                "Asesor_Recursos_Académicos": principal.get("Asesor_Recursos_Académicos"),
-                "Nombre_Asesoría": principal.get("Nombre_Asesoría"),
-                "Modalidad del Programa": principal.get("Modalidad del Programa") or principal.get("Modalidad"),
-                "Modalidad": principal.get("Modalidad"),
-                "Asesor_Metodológico": principal.get("Asesor_Metodológico"),
-                "Modalidad_Asesoría2": principal.get("Modalidad_Asesoría2"),
-                "Detalle_Asesor_Metodologico": principal.get("Detalle_Asesor_Metodologico"),
+                "Modalidad del Programa": utils.norm_str(modalidad_programa),
+                "Correo_Electronico": utils.norm_str(correo),
                 "Título_Trabajo_Grado": utils.norm_str(titulo),
                 "Fecha": pd.to_datetime(fecha),
                 "Revisión Inicial": utils.norm_str(rev_inicial_value),
@@ -465,23 +542,30 @@ setTimeout(function(){{
 
             primary_doc_raw = (primary_doc_input or "").strip()
             primary_name_raw = (primary_name_input or "").strip()
+            primary_email_raw = (correo or "").strip()
             students_to_save = [
                 (
                     "principal",
                     utils.norm_str(primary_doc_raw),
                     utils.norm_str(primary_name_raw),
+                    utils.norm_str(primary_email_raw),
                 )
             ]
-            for i, (doc_input, name_input) in enumerate(extra_inputs):
+            for i, (doc_input, name_input, email_input) in enumerate(extra_inputs):
                 doc_raw = (doc_input or "").strip()
                 name_raw = (name_input or "").strip()
+                email_raw = (email_input or "").strip()
                 doc_val = utils.norm_str(doc_raw)
                 name_val = utils.norm_str(name_raw)
-                if doc_val or name_val:
+                email_val = utils.norm_str(email_raw)
+                if doc_val or name_val or email_val:
                     if not doc_raw or not name_raw:
                         st.warning(f"Completa documento y nombre para el estudiante adicional #{i + 1}.")
                         return
-                    students_to_save.append((f"extra_{i}", doc_val, name_val))
+                    if not email_raw:
+                        st.warning(f"Completa el correo electrónico para el estudiante adicional #{i + 1}.")
+                        return
+                    students_to_save.append((f"extra_{i}", doc_val, name_val, email_val))
 
             with st.container():
                 saving = st.session_state.get("saving", False)
@@ -490,32 +574,70 @@ setTimeout(function(){{
                 if st.button("💾 Guardar registro", type="primary", disabled=saving):
                     first_doc = (primary_doc_raw or "").strip()
                     first_name = (primary_name_raw or "").strip()
+                    first_email = (primary_email_raw or "").strip()
                     if not first_doc:
                         st.warning("El campo Documento/Id es obligatorio.")
                     elif not first_name:
                         st.warning("El campo Nombre y apellidos es obligatorio.")
+                    elif not first_email:
+                        st.warning("El campo Correo electr\xf3nico es obligatorio.")
                     else:
                         st.session_state["saving"] = True
                         successes = 0
                         errors = []
+                        is_editing = bool(st.session_state.get("editing_target"))
                         with st.spinner("Guardando registro..."):
-                            for _, doc_val, name_val in students_to_save:
-                                if not doc_val and not name_val:
-                                    continue
+                            if is_editing:
                                 row = base_row_template.copy()
-                                row["Cédula"] = doc_val
-                                row["Nombre_Usuario"] = name_val
+                                row["C\xe9dula"] = utils.norm_str(primary_doc_raw)
+                                row["Nombre_Usuario"] = utils.norm_str(primary_name_raw)
+                                row["Correo_Electronico"] = utils.norm_str(primary_email_raw)
                                 try:
-                                    service.add_registro(row, asesorias_payload)
-                                    successes += 1
+                                    service.update_registro(row, asesorias_payload)
+                                    successes = 1
                                 except ValueError as exc:
-                                    errors.append(f"{name_val or doc_val}: {exc}")
+                                    errors.append(str(exc))
+                            else:
+                                for _, doc_val, name_val, email_val in students_to_save:
+                                    if not doc_val and not name_val:
+                                        continue
+                                    row = base_row_template.copy()
+                                    row["C\xe9dula"] = doc_val
+                                    row["Nombre_Usuario"] = name_val
+                                    row["Correo_Electronico"] = email_val
+                                    try:
+                                        service.add_registro(row, asesorias_payload)
+                                        successes += 1
+                                    except ValueError as exc:
+                                        errors.append(f"{name_val or doc_val}: {exc}")
                         st.session_state["saving"] = False
                         if successes:
-                            st.success(f"Registro guardado para {successes} estudiante(s).")
+                            success_message = (
+                                "Registro actualizado correctamente."
+                                if is_editing
+                                else "Registro guardado."
+                            )
+                            st.markdown(
+                                f"""
+<div style="
+    border-radius: 0.5rem;
+    border: 1px solid #15803d;
+    background-color: #16a34a;
+    color: #ffffff;
+    font-weight: 600;
+    padding: 0.75rem 1rem;
+    margin-top: 0.75rem;
+">
+    {success_message}
+</div>
+""",
+                                unsafe_allow_html=True,
+                            )
                         for err in errors:
                             st.warning(err)
                         if successes and not errors:
+                            if is_editing:
+                                st.session_state.pop("editing_target", None)
                             st.session_state["reset_pending"] = True
                             _streamlit_rerun()
 
@@ -529,7 +651,25 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
         with search_cols[0]:
             q = st.text_input("Buscar por nombre o cédula", placeholder="Ej: Valentina o 1032331000", key="q_search")
         with search_cols[1]:
-            st.button("🔍", key="btn_search_trigger", help="Ejecutar búsqueda")
+            st.markdown(
+                """
+<style>
+div[data-testid="stButton"][id*="btn_search_trigger"] button {
+    background-color: transparent !important;
+    border: none !important;
+    color: #f1f5f9 !important;
+    font-size: 1.5rem !important;
+    padding: 0.1rem 0 !important;
+}
+div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
+    color: #c8f560 !important;
+}
+</style>
+""",
+                unsafe_allow_html=True,
+            )
+            if st.button("🔍", key="btn_search_trigger", help="Ejecutar búsqueda"):
+                _streamlit_rerun()
         q = q.strip()
         if q:
             q_low = q.lower()
@@ -543,20 +683,77 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
         else:
             filtered = df_latest.copy()
 
+        selected_idx = None
+        modify_cols = st.columns([0.75, 0.25])
+        with modify_cols[0]:
+            st.markdown(" ")
+        with modify_cols[1]:
+            if st.button("Modificar registro", key="btn_consulta_modify", disabled=len(filtered) != 1):
+                if len(filtered) == 1:
+                    selected_idx = int(filtered.index[0])
+                    row = df_latest.loc[selected_idx]
+                    clean_row = row.drop(labels=HIDDEN_COLUMNS, errors="ignore")
+                    ced_value = str(row.get("Cédula") or row.get("C?dula") or "").strip()
+                    st.session_state["editing_target"] = {
+                        "index": selected_idx,
+                        "cedula": ced_value,
+                        "nombre": str(row.get("Nombre_Usuario", "")).strip(),
+                    }
+                    st.session_state["pending_prefill_doc"] = ced_value
+                    st.session_state["inline_edit_idx"] = selected_idx
+                    st.session_state["inline_edit_data"] = clean_row.to_dict()
+                    st.success("Registro listo para modificar (puedes editarlo abajo o en la pestaña Registrar).")
+                    _streamlit_rerun()
+
+
         st.write(f"Registros encontrados: **{len(filtered)}**")
+        inline_idx = st.session_state.get("inline_edit_idx")
+        if inline_idx is not None:
+            st.markdown("### Editar registro seleccionado")
+            inline_data = st.session_state.get("inline_edit_data")
+            if not inline_data:
+                inline_data = (
+                    df_latest.loc[inline_idx]
+                    .drop(labels=HIDDEN_COLUMNS, errors="ignore")
+                    .to_dict()
+                )
+            editable_df = pd.DataFrame([inline_data])
+            edited_df = st.data_editor(
+                editable_df,
+                num_rows="fixed",
+                use_container_width=True,
+                key="inline_editor",
+            )
+            st.session_state["inline_edit_data"] = edited_df.iloc[0].to_dict()
+            action_cols = st.columns([0.25, 0.25, 0.5])
+            with action_cols[0]:
+                if st.button("💾 Guardar cambios", key="btn_inline_save"):
+                    df_all = service.load_registro()
+                    df_all.loc[inline_idx] = edited_df.iloc[0]
+                    service.save_registro(df_all)
+                    st.success("Registro actualizado correctamente.")
+                    st.session_state.pop("inline_edit_idx", None)
+                    st.session_state.pop("inline_edit_data", None)
+                    st.session_state["reset_pending"] = True
+                    _streamlit_rerun()
+            with action_cols[1]:
+                if st.button("Cancelar edición", key="btn_inline_cancel"):
+                    st.session_state.pop("inline_edit_idx", None)
+                    st.session_state.pop("inline_edit_data", None)
+                    _streamlit_rerun()
         cols_show = [
             c
             for c in [
                 "Nombre_Usuario",
-                "Cédula",
-                "Título_Trabajo_Grado",
-                "Total_Asesorías",
-                "Historial_Asesorías",
-                "Historial_Asesor_Recursos",
+                "C\u00e9dula",
+                "Correo_Electronico",
+                "T\u00edtulo_Trabajo_Grado",
+                "Nombre_Facultad",
+                "Nombre_Programa",
                 "Paz_y_Salvo",
                 "Fecha",
             ]
-            if c in filtered.columns
+            if c in filtered.columns and c not in HIDDEN_COLUMNS
         ]
         sort_col = "Fecha" if "Fecha" in filtered.columns else None
         if "Fecha" in filtered.columns:
@@ -572,119 +769,12 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
             st.dataframe(df_to_show[cols_show], use_container_width=True)
         else:
             st.info("No hay registros para mostrar.")
-
-        st.divider()
-        st.markdown("### 📌 Historial del estudiante")
-        if len(filtered) == 0:
-            st.info("Primero busca un estudiante para ver su historial.")
-        else:
-            options = []
-            for idx, row in filtered.iterrows():
-                label = f"{row.get('Nombre_Usuario','')} | {row.get('Cédula','')} | Total: {row.get('Total_Asesorías',0)}"
-                options.append((int(idx), label))
-            sel = st.selectbox("Selecciona el estudiante para ver el historial", options, format_func=lambda x: x[1])
-            sel_idx = sel[0]
-            row = df_latest.loc[sel_idx]
-
-            detail_df = pd.DataFrame(
-                [
-                    {
-                        "Documento/Id": row.get("Cédula", ""),
-                        "Nombre": row.get("Nombre_Usuario", ""),
-                        "Facultad": row.get("Nombre_Facultad", ""),
-                        "Programa": row.get("Nombre_Programa", ""),
-                        "Total asesorías": row.get("Total_Asesorías", 0),
-                        "Paz y salvo": row.get("Paz_y_Salvo", ""),
-                        "Título trabajo de grado": row.get("Título_Trabajo_Grado", ""),
-                    }
-                ]
-            )
-            st.dataframe(detail_df, use_container_width=True, hide_index=True)
-
-            action_cols = st.columns([0.4, 0.4])
-            with action_cols[0]:
-                if st.button("✏️ Modificar registro", key=f"btn_edit_{sel_idx}"):
-                    st.session_state["cedula"] = str(row.get("Cédula", "")).strip()
-                    _autofill_by_cedula(meta, service, show_modal=False)
-                    st.success("Formulario precargado en la pestaña Registrar.")
-            with action_cols[1]:
-                confirm_del = st.checkbox("Confirmar eliminación total", key=f"chk_del_total_{sel_idx}")
-                if st.button("🗑 Eliminar registro", key=f"btn_del_total_{sel_idx}", disabled=not confirm_del):
-                    service.delete_registro(sel_idx)
-                    st.success("Registro eliminado correctamente.")
-                    _streamlit_rerun()
-
-            hist_df = service.history_table_from_row(row)
-            st.dataframe(hist_df, use_container_width=True)
-
-            st.markdown("### 🧹 Eliminar una asesoría del historial")
-            if len(hist_df) == 0:
-                st.info("Este estudiante no tiene asesorías registradas.")
-            elif len(hist_df) == 1:
-                st.info("Este estudiante solo tiene una asesoría registrada; no es posible eliminarla de forma individual.")
-            else:
-                n_values = hist_df["N"].tolist()
-                n_to_delete = st.selectbox("Selecciona el número de la asesoría a eliminar", n_values)
-                sel_row = hist_df[hist_df["N"] == n_to_delete].iloc[0]
-                st.write("Vas a eliminar:")
-                st.write(f"- **Fecha:** {sel_row.get('Fecha','')}")
-                st.write(f"- **Asesoría:** {sel_row.get('Asesoría','')}")
-                st.write(f"- **Asesor Recursos:** {sel_row.get('Asesor Recursos','')}")
-                st.write(f"- **Asesor Metodológico:** {sel_row.get('Asesor Metodológico','')}")
-                confirm_one = st.checkbox("Confirmo eliminar SOLO esta asesoría del historial", key="confirm_delete_one")
-                if st.button("Eliminar asesoría seleccionada", disabled=not confirm_one):
-                    df_all = service.load_registro()
-                    updated = service.delete_history_item(df_all.loc[sel_idx].copy(), int(n_to_delete) - 1)
-                    df_all.loc[sel_idx] = updated
-                    service.save_registro(df_all)
-                    st.success("Asesoría eliminada.")
-                    _streamlit_rerun()
-
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-                hist_df.to_excel(writer, index=False, sheet_name="Historial")
-            buffer.seek(0)
-            st.download_button(
-                "Descargar historial (Excel)",
-                data=buffer.read(),
-                file_name=f"historial_{str(row.get('Cédula','')).strip() or 'estudiante'}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-
-        st.divider()
-        st.markdown("### ⬇️ Descargar Excel actual")
         st.download_button(
-            label="Descargar registro (Excel)",
+            label="Descargar archivo con registros",
             data=service.download_bytes(),
             file_name="registro_asesorias_actual.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-
-
-def _tab_masivo(tab, service: RegistroService):
-    with tab:
-        st.subheader("Carga masiva (plantilla · subir · actualizar registros)")
-        template_cols = service.load_registro().columns.tolist()
-        st.markdown("**1) Descargar plantilla** (mismos campos del formulario + paz y salvo).")
-        st.download_button(
-            "Descargar plantilla para carga masiva",
-            data=service.build_bulk_template(template_cols),
-            file_name="plantilla_carga_masiva_asesorias.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        st.markdown("**2) Subir archivo diligenciado** (crea o modifica el registro del estudiante).")
-        up = st.file_uploader("Sube el Excel", type=["xlsx"], key="up_bulk")
-        if up is not None:
-            try:
-                df_up = pd.read_excel(up)
-                st.write("Vista previa (primeras 10 filas):")
-                st.dataframe(df_up.head(10), use_container_width=True)
-                if st.button("Importar / Actualizar", type="primary", key="btn_bulk_import"):
-                    service.bulk_import(df_up)
-                    st.success("Importación completada.")
-                    _streamlit_rerun()
-            except Exception as exc:
-                st.error(f"No se pudo leer/importar el archivo: {exc}")
 
 
 def render_app():
