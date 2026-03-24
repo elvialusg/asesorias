@@ -1,0 +1,100 @@
+                                f"""
+<div style="
+    border-radius: 0.5rem;
+    border: 1px solid #15803d;
+    background-color: #16a34a;
+    color: #ffffff;
+    font-weight: 600;
+    padding: 0.75rem 1rem;
+    margin-top: 0.75rem;
+">
+    {success_message}
+</div>
+""",
+                                unsafe_allow_html=True,
+                            )
+                        for err in errors:
+                            st.warning(err)
+                        if successes and not errors:
+                            if is_editing:
+                                st.session_state.pop("editing_target", None)
+                            st.session_state["reset_pending"] = True
+                            _streamlit_rerun()
+
+
+
+def _tab_consulta(tab, service: RegistroService, meta: dict):
+    with tab:
+        st.subheader("Buscar usuario registrado")
+        try:
+            df_latest = service.load_registro()
+        except RuntimeError as exc:
+            st.error(str(exc))
+            return
+        search_cols = st.columns([0.85, 0.15])
+        with search_cols[0]:
+            q = st.text_input("Buscar por nombre o cédula", placeholder="Ej: Valentina o 1032331000", key="q_search")
+        with search_cols[1]:
+            st.markdown(
+                """
+<style>
+div[data-testid="stButton"][id*="btn_search_trigger"] button {
+    background-color: transparent !important;
+    border: none !important;
+    color: #f1f5f9 !important;
+    font-size: 1.5rem !important;
+    padding: 0.1rem 0 !important;
+}
+div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
+    color: #c8f560 !important;
+}
+</style>
+""",
+                unsafe_allow_html=True,
+            )
+            if st.button("??", key="btn_search_trigger", help="Ejecutar búsqueda"):
+                _streamlit_rerun()
+        q = q.strip()
+        if q:
+            q_low = q.lower()
+
+            def match_row(row):
+                name = str(row.get("Nombre_Usuario", "")).lower()
+                ced = str(row.get("Cédula", "")).lower()
+                return q_low in name or q_low in ced
+
+            filtered = df_latest[df_latest.apply(match_row, axis=1)].copy()
+        else:
+            filtered = df_latest.copy()
+
+        selected_idx = None
+        modify_cols = st.columns([0.75, 0.25])
+        with modify_cols[0]:
+            st.markdown(" ")
+        with modify_cols[1]:
+            if st.button("Modificar registro", key="btn_consulta_modify", disabled=len(filtered) != 1):
+                if len(filtered) == 1:
+                    selected_idx = int(filtered.index[0])
+                    row = df_latest.loc[selected_idx]
+                    clean_row = row.drop(labels=HIDDEN_COLUMNS, errors="ignore")
+                    ced_value = str(row.get("Cédula") or row.get("C?dula") or "").strip()
+                    st.session_state["editing_target"] = {
+                        "index": selected_idx,
+                        "cedula": ced_value,
+                        "nombre": str(row.get("Nombre_Usuario", "")).strip(),
+                    }
+                    st.session_state["pending_prefill_doc"] = ced_value
+                    st.session_state["inline_edit_idx"] = selected_idx
+                    st.session_state["inline_edit_data"] = clean_row.to_dict()
+                    st.success("Registro listo para modificar (puedes editarlo abajo o en la pestaña Registrar).")
+                    _streamlit_rerun()
+
+
+        st.write(f"Registros encontrados: **{len(filtered)}**")
+        inline_idx = st.session_state.get("inline_edit_idx")
+        if inline_idx is not None:
+            st.markdown("### Editar registro seleccionado")
+            inline_data = st.session_state.get("inline_edit_data")
+            if not inline_data:
+                inline_data = (
+                    df_latest.loc[inline_idx]

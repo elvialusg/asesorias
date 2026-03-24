@@ -645,7 +645,6 @@ setTimeout(function(){{
 
 def _tab_consulta(tab, service: RegistroService, meta: dict):
     with tab:
-        st.subheader("Buscar usuario registrado")
         try:
             df_latest = service.load_registro()
         except RuntimeError as exc:
