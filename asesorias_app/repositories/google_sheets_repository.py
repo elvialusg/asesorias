@@ -9,6 +9,7 @@ from typing import List
 import pandas as pd
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from asesorias_app import config
 from asesorias_app.repositories.excel_repository import ExcelRepository, normalize_registro_df
@@ -48,12 +49,17 @@ class GoogleSheetsRepository(ExcelRepository):
     # Registro principal -------------------------------------------------
     def load_registro(self) -> pd.DataFrame:
         service = self._sheets_service()
-        result = (
-            service.spreadsheets()
-            .values()
-            .get(spreadsheetId=self.spreadsheet_id, range=self.registro_range)
-            .execute()
-        )
+        try:
+            result = (
+                service.spreadsheets()
+                .values()
+                .get(spreadsheetId=self.spreadsheet_id, range=self.registro_range)
+                .execute()
+            )
+        except HttpError as exc:
+            raise RuntimeError(
+                "No se pudo consultar Google Sheets. Verifica que las credenciales tengan acceso al documento."
+            ) from exc
         values = result.get("values", [])
         if not values:
             df = pd.DataFrame(columns=[])

@@ -645,8 +645,11 @@ setTimeout(function(){{
 
 def _tab_consulta(tab, service: RegistroService, meta: dict):
     with tab:
-        st.subheader("Buscar usuario registrado")
-        df_latest = service.load_registro()
+        try:
+            df_latest = service.load_registro()
+        except RuntimeError as exc:
+            st.error(str(exc))
+            return
         search_cols = st.columns([0.85, 0.15])
         with search_cols[0]:
             q = st.text_input("Buscar por nombre o cédula", placeholder="Ej: Valentina o 1032331000", key="q_search")
