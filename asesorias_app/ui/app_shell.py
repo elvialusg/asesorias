@@ -767,9 +767,15 @@ div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
             df_to_show = filtered
             if sort_col:
                 df_to_show = df_to_show.sort_values(sort_col, ascending=False)
+            if inline_idx is not None and inline_idx in df_to_show.index:
+                # Evita mostrar el mismo registro dos veces cuando se edita en línea.
+                df_to_show = df_to_show.drop(index=inline_idx)
             if "_Fecha_sort" in df_to_show.columns:
                 df_to_show = df_to_show.drop(columns="_Fecha_sort")
-            st.dataframe(df_to_show[cols_show], use_container_width=True)
+            if not df_to_show.empty:
+                st.dataframe(df_to_show[cols_show], use_container_width=True)
+            elif inline_idx is not None:
+                st.info("El registro seleccionado se está mostrando en el editor superior.")
         else:
             st.info("No hay registros para mostrar.")
         st.download_button(
