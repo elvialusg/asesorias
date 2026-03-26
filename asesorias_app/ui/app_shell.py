@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+from asesorias_app import config
 from asesorias_app.config import TEMPLATE_PATH
 from asesorias_app.core import utils
 from asesorias_app.services.registro_service import RegistroService
@@ -276,6 +277,7 @@ def _render_tabs(service: RegistroService, meta: dict) -> None:
     menu_items = {
         "register": "Registrar tesis",
         "consult": "Consultar usuario",
+        "normalizacion": "Normalización",
     }
     query_params = st.query_params
     current_page = query_params.get("page", "register")
@@ -318,6 +320,8 @@ a.menu-link.active {
             _tab_registro(content_col, service, meta)
         elif current == "consult":
             _tab_consulta(content_col, service, meta)
+        elif current == "normalizacion":
+            _tab_normalizacion(content_col, service, meta)
 
 
 def _tab_registro(tab, service: RegistroService, meta: dict):
@@ -784,6 +788,45 @@ div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
             file_name="registro_asesorias_actual.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+
+
+def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
+    with tab:
+        spacer_left, col_center, spacer_right = st.columns([0.12, 0.76, 0.12])
+        with col_center:
+            st.subheader("Normalización")
+            st.markdown("### Distribuir registros existentes")
+            default_people = getattr(config, "DEFAULT_ASSIGNMENT_PEOPLE", [])
+            default_text = "\n".join(default_people)
+            responsables_text = st.text_area(
+                "Personas responsables (una por línea, se asignarán en este orden):",
+                value=default_text,
+                key="assignment_people_text",
+            )
+            distribute = st.button("Distribuir registros", type="primary")
+            if distribute:
+                responsables = [line.strip() for line in responsables_text.splitlines() if line.strip()]
+                with st.spinner("Distribuyendo registros existentes..."):
+                    try:
+                        result = service.distribute_registros(responsables)
+                    except Exception as exc:  # pragma: no cover - Streamlit feedback
+                        st.error(f"No se pudo completar la distribución: {exc}")
+                    else:
+                        st.success(
+                            f"Distribución completada. Registros asignados: {result['total_valid']}. "
+                            f"Columna utilizada: {result['assignment_column']}."
+                        )
+                        st.markdown("#### Resumen por persona")
+                        summary_cols = st.columns(2)
+                        for idx, (persona, cantidad) in enumerate(result["counts"].items()):
+                            with summary_cols[idx % 2]:
+                                st.metric(persona, cantidad)
+                        ignored = result.get("ignored_rows", 0)
+                        if ignored:
+                            st.warning(
+                                f"{ignored} filas se ignoraron por estar vacías o no tener nombre/cédula. "
+                                "Puedes revisarlas en la pestaña Consultar usuario."
+                            )
 
 
 def render_app():

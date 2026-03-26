@@ -126,3 +126,52 @@ class RegistroService:
                         df.loc[idx, key] = value
 
         self.save_registro(df)
+
+    @staticmethod
+    def _is_valid_registro(row) -> bool:
+        doc_value = None
+        for key in ("CǸdula", "Cédula", "C�dula", "C?dula"):
+            if key in row:
+                doc_value = row.get(key)
+                if doc_value:
+                    break
+        doc = norm_str(doc_value)
+        nombre = norm_str(row.get("Nombre_Usuario"))
+        return bool(doc or nombre)
+
+    def distribute_registros(self, responsables: List[str], seed: Optional[int] = None) -> Dict:
+        assignment_col = getattr(config, "ASSIGNMENT_COLUMN", "Asignado_a")
+        responsables_clean = [r.strip() for r in responsables if r and r.strip()]
+        if not responsables_clean:
+            raise ValueError("Debes definir al menos una persona responsable.")
+
+        df = self.load_registro()
+        if df.empty:
+            raise ValueError("No hay registros en el sistema para distribuir.")
+        if assignment_col not in df.columns:
+            raise RuntimeError(
+                f"No existe la columna '{assignment_col}'. Verifica la configuración o ejecuta la normalización primero."
+            )
+
+        valid_mask = df.apply(self._is_valid_registro, axis=1)
+        df_valid = df.loc[valid_mask].copy()
+        ignored = int((~valid_mask).sum())
+        if df_valid.empty:
+            raise ValueError("No hay registros válidos (con nombre o cédula) para distribuir.")
+
+        shuffled = df_valid.sample(frac=1, random_state=seed)
+        counts = {resp: 0 for resp in responsables_clean}
+        reps = len(responsables_clean)
+        for idx, (row_idx, _) in enumerate(shuffled.iterrows()):
+            responsible = responsables_clean[idx % reps]
+            df.loc[row_idx, assignment_col] = responsible
+            counts[responsible] += 1
+
+        self.save_registro(df)
+        return {
+            "total_valid": int(len(df_valid)),
+            "ignored_rows": ignored,
+            "counts": counts,
+            "seed": seed,
+            "assignment_column": assignment_col,
+        }

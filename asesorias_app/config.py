@@ -35,6 +35,13 @@ GOOGLE_SHEETS_SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
+ASSIGNMENT_COLUMN = "Asignado_a"
+DEFAULT_ASSIGNMENT_PEOPLE = [
+    "Harold Estiven Garía",
+    "Luz Andrea Sepúlveda",
+    "Juan Pablo Charry",
+    "Maria Eugenia Nieto",
+]
 REGISTRO_COLUMNS = [
     "Cédula",
     "Nombre_Usuario",
@@ -53,6 +60,7 @@ REGISTRO_COLUMNS = [
     "% similitud",
     "Aprobación_Similitud",
     "Paz_y_Salvo",
+    ASSIGNMENT_COLUMN,
 ]
 
 REMOVED_REGISTRO_COLUMNS = [
