@@ -35,6 +35,21 @@ GOOGLE_SHEETS_SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
+ASSIGNMENT_COLUMN = "Asignado_a"
+DEFAULT_ASSIGNMENT_PEOPLE = [
+    "Harold Estiven Garía",
+    "Luz Andrea Sepúlveda",
+    "Juan Pablo Charry",
+    "Maria Eugenia Nieto",
+]
+REGISTRO_ID_COLUMN = "Registro_ID"
+NORMALIZATION_STATUS_COLUMN = "Estado_Normalizacion"
+NORMALIZATION_REVIEWER_COLUMN = "Revisado_por"
+NORMALIZATION_DATE_COLUMN = "Fecha_revision"
+NORMALIZATION_OBS_COLUMN = "Observacion_Normalizacion"
+NORMALIZATION_OK_VALUE = "OK"
+NORMALIZATION_PENDING_VALUE = "Pendiente"
+
 REGISTRO_COLUMNS = [
     "Cédula",
     "Nombre_Usuario",
@@ -53,6 +68,12 @@ REGISTRO_COLUMNS = [
     "% similitud",
     "Aprobación_Similitud",
     "Paz_y_Salvo",
+    ASSIGNMENT_COLUMN,
+    REGISTRO_ID_COLUMN,
+    NORMALIZATION_STATUS_COLUMN,
+    NORMALIZATION_REVIEWER_COLUMN,
+    NORMALIZATION_DATE_COLUMN,
+    NORMALIZATION_OBS_COLUMN,
 ]
 
 REMOVED_REGISTRO_COLUMNS = [
