@@ -795,11 +795,11 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
         spacer_left, col_center, spacer_right = st.columns([0.12, 0.76, 0.12])
         with col_center:
             st.subheader("Normalización")
-            st.markdown("### Distribuir registros existentes")
+            st.markdown('<h3 style="font-size:1.2rem; margin-bottom:0.5rem;">Distribuir registros existentes</h3>', unsafe_allow_html=True)
             default_people = getattr(config, "DEFAULT_ASSIGNMENT_PEOPLE", [])
             default_text = "\n".join(default_people)
             responsables_text = st.text_area(
-                "Personas responsables (una por línea, se asignarán en este orden):",
+                "Personas responsables en proceso de normalización:",
                 value=default_text,
                 key="assignment_people_text",
             )
@@ -827,6 +827,109 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                                 f"{ignored} filas se ignoraron por estar vacías o no tener nombre/cédula. "
                                 "Puedes revisarlas en la pestaña Consultar usuario."
                             )
+
+            st.markdown("---")
+            st.markdown("### Normalización por responsable")
+            responsables_opts = service.list_responsables()
+            if not responsables_opts:
+                st.info("Todavía no hay responsables definidos. Distribuye los registros para habilitar esta sección.")
+            else:
+                responsable = st.selectbox(
+                    "Selecciona la persona responsable",
+                    options=responsables_opts,
+                    key="normalizacion_responsable",
+                )
+                if responsable:
+                    try:
+                        asignados_df = service.get_registros_por_responsable(responsable)
+                    except Exception as exc:  # pragma: no cover
+                        st.error(f"No se pudieron obtener los registros asignados: {exc}")
+                    else:
+                        if asignados_df.empty:
+                            st.info("No hay estudiantes asignados a esta persona.")
+                        else:
+                            resumen = service.summarize_normalizacion(asignados_df)
+                            metric_cols = st.columns(3)
+                            metric_cols[0].metric("Total asignados", resumen["total"])
+                            metric_cols[1].metric("Pendientes", resumen["pending"])
+                            metric_cols[2].metric("OK", resumen["ok"])
+
+                            try:
+                                download_payload = service.build_responsable_excel(responsable)
+                            except Exception as exc:  # pragma: no cover
+                                st.error(f"No se pudo generar el archivo de descarga: {exc}")
+                            else:
+                                safe_name = responsable.lower().replace(" ", "_")
+                                st.download_button(
+                                    f"Descargar registros de {responsable}",
+                                    data=download_payload,
+                                    file_name=f"normalizacion_{safe_name}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                )
+
+                            status_col = config.NORMALIZATION_STATUS_COLUMN
+                            obs_col = config.NORMALIZATION_OBS_COLUMN
+                            id_col = config.REGISTRO_ID_COLUMN
+                            ced_col = None
+                            for candidate in ("C\u01f8dula", "C\u00e9dula", "C?dula", "Cedula"):
+                                if candidate in asignados_df.columns:
+                                    ced_col = candidate
+                                    break
+                            ced_values = (
+                                asignados_df[ced_col].astype(str)
+                                if ced_col
+                                else [""] * len(asignados_df)
+                            )
+                            ok_value = (config.NORMALIZATION_OK_VALUE or "OK").upper()
+                            edit_source = pd.DataFrame(
+                                {
+                                    "ID": asignados_df[id_col].astype(str),
+                                    "Nombre": asignados_df.get("Nombre_Usuario", ""),
+                                    "Cedula": ced_values,
+                                    "Revisado": asignados_df[status_col]
+                                    .fillna("")
+                                    .astype(str)
+                                    .str.upper()
+                                    .eq(ok_value),
+                                    "Observacion": asignados_df[obs_col].fillna("").astype(str),
+                                }
+                            )
+                            edit_source = edit_source.set_index("ID")
+                            column_config = {
+                                "Nombre": st.column_config.TextColumn("Nombre de estudiante", disabled=True),
+                                "Cedula": st.column_config.TextColumn("Cédula", disabled=True),
+                                "Revisado": st.column_config.CheckboxColumn("Estado OK"),
+                                "Observacion": st.column_config.TextColumn("Observación de normalización"),
+                            }
+                            edited_df = st.data_editor(
+                                edit_source,
+                                hide_index=True,
+                                column_config=column_config,
+                                key=f"editor_normalizacion_{responsable}",
+                            )
+                            if st.button("Guardar avances", key=f"btn_save_normalizacion_{responsable}"):
+                                updates = []
+                                for idx_row, row in edited_df.iterrows():
+                                    updates.append(
+                                        {
+                                            "id": idx_row,
+                                            "ok": bool(row["Revisado"]),
+                                            "observacion": row.get("Observacion", ""),
+                                        }
+                                    )
+                                with st.spinner("Guardando cambios en Google Sheets..."):
+                                    try:
+                                        resultado = service.update_normalizacion_estado(responsable, updates)
+                                    except Exception as exc:  # pragma: no cover
+                                        st.error(f"No se pudieron guardar los cambios: {exc}")
+                                    else:
+                                        st.success(
+                                            f"Se actualizaron {resultado.get('updated', 0)} registros para {responsable}."
+                                        )
+                                        st.info(
+                                            f"Pendientes: {resultado.get('pending', 0)} | OK: {resultado.get('ok', 0)}"
+                                        )
+                                        _streamlit_rerun()
 
 
 def render_app():
