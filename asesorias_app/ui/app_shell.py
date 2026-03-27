@@ -278,6 +278,7 @@ def _render_tabs(service: RegistroService, meta: dict) -> None:
         "register": "Registrar tesis",
         "consult": "Consultar usuario",
         "normalizacion": "Normalización",
+        "publicacion": "Publicación",
     }
     query_params = st.query_params
     current_page = query_params.get("page", "register")
@@ -322,6 +323,8 @@ a.menu-link.active {
             _tab_consulta(content_col, service, meta)
         elif current == "normalizacion":
             _tab_normalizacion(content_col, service, meta)
+        elif current == "publicacion":
+            _tab_publicacion(content_col, service, meta)
 
 
 def _tab_registro(tab, service: RegistroService, meta: dict):
@@ -930,6 +933,161 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                                             f"Pendientes: {resultado.get('pending', 0)} | OK: {resultado.get('ok', 0)}"
                                         )
                                         _streamlit_rerun()
+
+
+def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
+    with tab:
+        try:
+            df_ready = service.get_publicacion_registros()
+        except Exception as exc:  # pragma: no cover
+            st.error(f"No se pudieron cargar los registros para publicación: {exc}")
+            return
+        summary = service.summarize_publicacion(df_ready)
+        assigned = summary.get("assigned", {})
+        metric_cols = st.columns(4)
+        metric_cols[0].metric("Listos para publicación", summary.get("total", 0))
+        metric_cols[1].metric("Pendientes", summary.get("pending", 0))
+        metric_cols[2].metric("Publicados", summary.get("published", 0))
+        metric_cols[3].metric("Asignados Gloria", assigned.get(config.PUBLICATION_PRIMARY, 0))
+        support_name = config.PUBLICATION_RESPONSIBLES[1]
+        st.metric("Asignados Diana", assigned.get(support_name, 0))
+        responsables = service.list_publicacion_responsables()
+        if not responsables:
+            st.info("No hay responsables configurados para publicación.")
+            return
+        responsable = st.selectbox(
+            "Responsable activo",
+            options=responsables,
+            key="publicacion_responsable",
+        )
+        if not responsable:
+            st.info("Selecciona un responsable para ver sus registros.")
+            return
+        show_all = False
+        primary_norm = (utils.norm_str(config.PUBLICATION_PRIMARY) or "").lower()
+        responsable_norm = (utils.norm_str(responsable) or "").lower()
+        if responsable_norm == primary_norm:
+            show_all = st.checkbox(
+                "Ver todos los pendientes de publicación",
+                value=False,
+                key="publicacion_show_all",
+            )
+        df_responsable = service.get_publicacion_registros(
+            None if show_all else responsable,
+            include_all_for_primary=show_all,
+        )
+        if df_responsable.empty:
+            st.info("No hay registros listos para publicación con este filtro.")
+            return
+        try:
+            download_payload = service.build_publicacion_excel(
+                None if show_all else responsable,
+                include_all_for_primary=show_all,
+            )
+        except ValueError:
+            download_payload = None
+        else:
+            safe_name = (responsable.lower().replace(" ", "_")) if not show_all else "todos"
+            st.download_button(
+                f"Descargar registros de {responsable if not show_all else 'todos'}",
+                data=download_payload,
+                file_name=f"publicacion_{safe_name}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        id_col = config.REGISTRO_ID_COLUMN
+        assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
+        state_col = config.PUBLICATION_STATUS_COLUMN
+        obs_col = config.PUBLICATION_OBS_COLUMN
+        ced_col = RegistroService._cedula_column(df_responsable)
+        ced_values = (
+            df_responsable[ced_col].astype(str) if ced_col else [""] * len(df_responsable)
+        )
+        done_value = (config.PUBLICATION_DONE_VALUE or "Publicado").upper()
+        edit_source = pd.DataFrame(
+            {
+                "ID": df_responsable[id_col].astype(str),
+                "Nombre": df_responsable.get("Nombre_Usuario", ""),
+                "Cedula": ced_values,
+                "Asignado": df_responsable.get(assignment_col, ""),
+                "Publicado": df_responsable[state_col].fillna("").astype(str).str.upper() == done_value,
+                "Observacion": df_responsable[obs_col].fillna("").astype(str),
+            }
+        )
+        edit_source = edit_source.set_index("ID")
+        column_config = {
+            "Nombre": st.column_config.TextColumn("Nombre de estudiante", disabled=True),
+            "Cedula": st.column_config.TextColumn("Cédula", disabled=True),
+            "Asignado": st.column_config.TextColumn("Asignado a", disabled=True),
+            "Publicado": st.column_config.CheckboxColumn("Publicado"),
+            "Observacion": st.column_config.TextColumn("Observación publicación"),
+        }
+        edited_df = st.data_editor(
+            edit_source,
+            hide_index=True,
+            column_config=column_config,
+            key=f"editor_publicacion_{responsable}",
+        )
+        if st.button("Guardar publicación", key=f"btn_save_publicacion_{responsable}"):
+            updates = [
+                {
+                    "id": idx,
+                    "ok": bool(row["Publicado"]),
+                    "observacion": row.get("Observacion", ""),
+                }
+                for idx, row in edited_df.iterrows()
+            ]
+            with st.spinner("Guardando cambios en Google Sheets..."):
+                try:
+                    resultado = service.update_publicacion_estado(responsable, updates)
+                except Exception as exc:  # pragma: no cover
+                    st.error(f"No se pudieron guardar los cambios: {exc}")
+                else:
+                    st.success(
+                        f"Se actualizaron {resultado.get('updated', 0)} registros de {responsable}."
+                    )
+                    st.info(
+                        f"Pendientes: {resultado.get('pending', 0)} | Publicados: {resultado.get('published', 0)}"
+                    )
+                    _streamlit_rerun()
+        if responsable_norm == primary_norm:
+            st.markdown("---")
+            st.markdown("#### Asignar registros a Diana Patricia Salazar")
+            pending_gloria = service.get_publicacion_registros(
+                config.PUBLICATION_PRIMARY, only_pending=True
+            )
+            if pending_gloria.empty:
+                st.info("No hay registros pendientes para reasignar.")
+            else:
+                ced_col_pending = RegistroService._cedula_column(pending_gloria)
+                options = []
+                display_to_id = {}
+                for _, row in pending_gloria.iterrows():
+                    label = row.get("Nombre_Usuario", "Sin nombre")
+                    ced_val = row.get(ced_col_pending, "") if ced_col_pending else ""
+                    uid = str(row[id_col])
+                    text = f"{label} ({ced_val}) - {uid}"
+                    options.append(text)
+                    display_to_id[text] = uid
+                seleccion = st.multiselect(
+                    "Selecciona registros para enviar a Diana",
+                    options=options,
+                    key="publicacion_assign_list",
+                )
+                if st.button("Asignar a Diana", key="btn_assign_publicacion"):
+                    ids_to_assign = [display_to_id[label] for label in seleccion]
+                    if not ids_to_assign:
+                        st.warning("Selecciona al menos un registro para reasignar.")
+                    else:
+                        with st.spinner("Actualizando asignaciones..."):
+                            try:
+                                updated = service.assign_publicacion(
+                                    config.PUBLICATION_PRIMARY, ids_to_assign, support_name
+                                )
+                            except Exception as exc:  # pragma: no cover
+                                st.error(f"No se pudo reasignar: {exc}")
+                            else:
+                                st.success(f"Se reasignaron {updated} registros a {support_name}.")
+                                _streamlit_rerun()
 
 
 def render_app():
