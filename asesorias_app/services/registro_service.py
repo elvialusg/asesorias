@@ -240,6 +240,51 @@ class RegistroService:
                 ordered.append(clean)
         return ordered
 
+    def _ensure_publicacion_columns(self, df: pd.DataFrame) -> bool:
+        changed = False
+        defaults = {
+            config.PUBLICATION_ASSIGNMENT_COLUMN: config.PUBLICATION_PRIMARY,
+            config.PUBLICATION_STATUS_COLUMN: config.PUBLICATION_PENDING_VALUE,
+            config.PUBLICATION_PUBLISHED_BY_COLUMN: "",
+            config.PUBLICATION_DATE_COLUMN: "",
+            config.PUBLICATION_OBS_COLUMN: "",
+        }
+        for col, default in defaults.items():
+            if col not in df.columns:
+                df[col] = default
+                changed = True
+            else:
+                mask = df[col].isna()
+                if mask.any():
+                    df.loc[mask, col] = default
+                    changed = True
+        assign_col = config.PUBLICATION_ASSIGNMENT_COLUMN
+        primary = config.PUBLICATION_PRIMARY
+        if assign_col in df.columns and primary:
+            empty_assign = df[assign_col].astype(str).str.strip() == ""
+            if empty_assign.any():
+                df.loc[empty_assign, assign_col] = primary
+                changed = True
+        status_col = config.PUBLICATION_STATUS_COLUMN
+        if status_col in df.columns:
+            empty_status = df[status_col].astype(str).str.strip() == ""
+            if empty_status.any():
+                df.loc[empty_status, status_col] = config.PUBLICATION_PENDING_VALUE
+                changed = True
+        return changed
+
+    def _load_registro_for_publicacion(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        df = self._load_registro_for_normalizacion()
+        changed = self._ensure_publicacion_columns(df)
+        status_col = config.NORMALIZATION_STATUS_COLUMN
+        ok_value = (config.NORMALIZATION_OK_VALUE or "OK").upper()
+        status = df[status_col].fillna("").astype(str).str.upper()
+        ready_mask = status == ok_value
+        ready_df = df.loc[ready_mask].copy()
+        if changed:
+            self.save_registro(df)
+        return df, ready_df
+
     def _filter_by_responsable(self, df: pd.DataFrame, responsable: str) -> pd.DataFrame:
         assignment_col = config.ASSIGNMENT_COLUMN
         target = norm_str(responsable)
@@ -335,5 +380,178 @@ class RegistroService:
             self.save_registro(df)
         summary_df = self._filter_by_responsable(df, responsable)
         summary = self.summarize_normalizacion(summary_df)
+        summary["updated"] = updated
+        return summary
+
+    def list_publicacion_responsables(self) -> List[str]:
+        return list(config.PUBLICATION_RESPONSIBLES)
+
+    def _filter_publicacion_by_responsable(self, df: pd.DataFrame, responsable: str) -> pd.DataFrame:
+        assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
+        target = norm_str(responsable)
+        if not target:
+            return df.iloc[0:0].copy()
+        values = df[assignment_col].fillna("").astype(str)
+        mask = values.apply(lambda v: (norm_str(v) or "").lower()) == target.lower()
+        return df.loc[mask].copy()
+
+    def get_publicacion_registros(
+        self,
+        responsable: Optional[str] = None,
+        *,
+        include_all_for_primary: bool = False,
+        only_pending: bool = False,
+    ) -> pd.DataFrame:
+        _, ready_df = self._load_registro_for_publicacion()
+        df_target = ready_df
+        if responsable:
+            target_norm = (norm_str(responsable) or "").lower()
+            primary_norm = (norm_str(config.PUBLICATION_PRIMARY) or "").lower()
+            if not (include_all_for_primary and target_norm == primary_norm):
+                df_target = self._filter_publicacion_by_responsable(df_target, responsable)
+        if only_pending:
+            state_col = config.PUBLICATION_STATUS_COLUMN
+            done_value = (config.PUBLICATION_DONE_VALUE or "Publicado").upper()
+            state = df_target[state_col].fillna("").astype(str).str.upper()
+            df_target = df_target[state != done_value]
+        return df_target
+
+    def build_publicacion_excel(
+        self, responsable: Optional[str], include_all_for_primary: bool = False
+    ) -> bytes:
+        df_resp = self.get_publicacion_registros(
+            responsable, include_all_for_primary=include_all_for_primary
+        )
+        if df_resp.empty:
+            raise ValueError("No hay registros de publicacion para descargar con este filtro")
+        columns = [config.REGISTRO_ID_COLUMN, "Nombre_Usuario"]
+        ced_col = self._cedula_column(df_resp)
+        if ced_col:
+            columns.append(ced_col)
+        columns += [
+            config.PUBLICATION_ASSIGNMENT_COLUMN,
+            config.PUBLICATION_STATUS_COLUMN,
+            config.PUBLICATION_OBS_COLUMN,
+            config.PUBLICATION_PUBLISHED_BY_COLUMN,
+            config.PUBLICATION_DATE_COLUMN,
+        ]
+        columns = [col for col in columns if col in df_resp.columns]
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+            df_resp[columns].to_excel(writer, index=False, sheet_name="Publicacion")
+        buffer.seek(0)
+        return buffer.read()
+
+    def assign_publicacion(self, assigner: str, ids: List[str], target: str) -> int:
+        primary_norm = (norm_str(config.PUBLICATION_PRIMARY) or "").lower()
+        assigner_norm = (norm_str(assigner) or "").lower()
+        if assigner_norm != primary_norm:
+            raise PermissionError("Solo la responsable principal puede reasignar publicaciones.")
+        target_clean = norm_str(target)
+        allowed = [norm_str(r) for r in config.PUBLICATION_RESPONSIBLES]
+        if target_clean not in allowed:
+            raise ValueError("Responsable de publicacion no valido.")
+        df_all, ready_df = self._load_registro_for_publicacion()
+        id_col = config.REGISTRO_ID_COLUMN
+        assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
+        state_col = config.PUBLICATION_STATUS_COLUMN
+        pub_by_col = config.PUBLICATION_PUBLISHED_BY_COLUMN
+        date_col = config.PUBLICATION_DATE_COLUMN
+        obs_col = config.PUBLICATION_OBS_COLUMN
+        allowed_ids = set(ready_df[id_col].astype(str))
+        normalized_ids = [norm_str(i) for i in ids if norm_str(i)]
+        updated = 0
+        for uid in normalized_ids:
+            if uid not in allowed_ids:
+                continue
+            matches = df_all[df_all[id_col].astype(str) == uid].index
+            if matches.empty:
+                continue
+            idx = matches[0]
+            df_all.at[idx, assignment_col] = target
+            df_all.at[idx, state_col] = config.PUBLICATION_PENDING_VALUE
+            df_all.at[idx, pub_by_col] = ""
+            df_all.at[idx, date_col] = ""
+            if pd.isna(df_all.at[idx, obs_col]):
+                df_all.at[idx, obs_col] = ""
+            updated += 1
+        if updated:
+            self.save_registro(df_all)
+        return updated
+
+    def summarize_publicacion(self, df: pd.DataFrame) -> Dict:
+        state_col = config.PUBLICATION_STATUS_COLUMN
+        assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
+        done_value = (config.PUBLICATION_DONE_VALUE or "Publicado").upper()
+        state = df[state_col].fillna("").astype(str).str.upper() if state_col in df.columns else pd.Series(dtype=str)
+        total = int(len(df))
+        published = int((state == done_value).sum())
+        pending = total - published
+        assigned: Dict[str, int] = {}
+        for resp in config.PUBLICATION_RESPONSIBLES:
+            assigned[resp] = int(
+                (
+                    df[assignment_col]
+                    .fillna("")
+                    .astype(str)
+                    .str.lower()
+                    == (norm_str(resp) or "").lower()
+                ).sum()
+            )
+        return {"total": total, "published": published, "pending": pending, "assigned": assigned}
+
+    def update_publicacion_estado(self, responsable: str, updates: List[Dict]) -> Dict:
+        df_all, ready_df = self._load_registro_for_publicacion()
+        id_col = config.REGISTRO_ID_COLUMN
+        assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
+        state_col = config.PUBLICATION_STATUS_COLUMN
+        pub_by_col = config.PUBLICATION_PUBLISHED_BY_COLUMN
+        date_col = config.PUBLICATION_DATE_COLUMN
+        obs_col = config.PUBLICATION_OBS_COLUMN
+        target_norm = (norm_str(responsable) or "").lower()
+        allowed = set(ready_df[id_col].astype(str))
+        updated = 0
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        done_value = config.PUBLICATION_DONE_VALUE
+        pending_value = config.PUBLICATION_PENDING_VALUE
+        for item in updates:
+            uid = norm_str(item.get("id") or item.get(id_col))
+            if not uid or uid not in allowed:
+                continue
+            matches = df_all[df_all[id_col].astype(str) == uid].index
+            if matches.empty:
+                continue
+            idx = matches[0]
+            assigned = (norm_str(df_all.at[idx, assignment_col]) or "").lower()
+            if assigned != target_norm:
+                continue
+            marked = bool(item.get("ok"))
+            obs_text = norm_str(item.get("observacion")) or ""
+            changed = False
+            new_status = done_value if marked else pending_value
+            if str(df_all.at[idx, state_col]) != new_status:
+                df_all.at[idx, state_col] = new_status
+                changed = True
+            if str(df_all.at[idx, obs_col]) != obs_text:
+                df_all.at[idx, obs_col] = obs_text
+                changed = True
+            if marked:
+                if str(df_all.at[idx, pub_by_col]) != responsable:
+                    df_all.at[idx, pub_by_col] = responsable
+                    changed = True
+                df_all.at[idx, date_col] = timestamp
+            else:
+                if str(df_all.at[idx, pub_by_col]):
+                    df_all.at[idx, pub_by_col] = ""
+                    changed = True
+                if str(df_all.at[idx, date_col]):
+                    df_all.at[idx, date_col] = ""
+                    changed = True
+            if changed:
+                updated += 1
+        if updated:
+            self.save_registro(df_all)
+        resumen = self.get_publicacion_registros(responsable)
+        summary = self.summarize_publicacion(resumen)
         summary["updated"] = updated
         return summary
