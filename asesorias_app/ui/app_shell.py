@@ -1,10 +1,11 @@
-﻿"""Vistas principales usando Streamlit."""
+"""Vistas principales usando Streamlit."""
 
 from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Dict, List, Optional
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
@@ -198,7 +199,7 @@ def _autofill_by_cedula(
             }
         return
     row = df.loc[idx]
-    doc_value = _clean_str(row.get("Cédula") or row.get("CǸdula") or ced)
+    doc_value = _clean_str(row.get("Cédula") or row.get("C?dula") or ced)
     st.session_state[doc_key] = doc_value
     st.session_state[name_key] = _clean_str(row.get("Nombre_Usuario"))
     st.session_state["titulo"] = _clean_str(row.get("Título_Trabajo_Grado"))
@@ -279,6 +280,7 @@ def _render_tabs(service: RegistroService, meta: dict) -> None:
         "consult": "Consultar usuario",
         "normalizacion": "Normalización",
         "publicacion": "Publicación",
+        "dashboard": "Dashboard / Metricas",
     }
     query_params = st.query_params
     current_page = query_params.get("page", "register")
@@ -325,6 +327,8 @@ a.menu-link.active {
             _tab_normalizacion(content_col, service, meta)
         elif current == "publicacion":
             _tab_publicacion(content_col, service, meta)
+        elif current == "dashboard":
+            _tab_dashboard(content_col, service, meta)
 
 
 def _tab_registro(tab, service: RegistroService, meta: dict):
@@ -409,7 +413,7 @@ setTimeout(function(){{
             st.caption("Estudiantes adicionales (opcional)")
             btn_add_col, label_add_col = st.columns([0.1, 0.9])
             with btn_add_col:
-                st.button("➕", on_click=_add_extra_student, key="btn_add_extra_student", type="secondary")
+                st.button("?", on_click=_add_extra_student, key="btn_add_extra_student", type="secondary")
             with label_add_col:
                 st.caption("Agregar estudiante")
             extra_n = _extra_students_count()
@@ -578,7 +582,7 @@ setTimeout(function(){{
                 saving = st.session_state.get("saving", False)
                 if saving:
                     st.info("Guardando registro...")
-                if st.button("💾 Guardar registro", type="primary", disabled=saving):
+                if st.button("?? Guardar registro", type="primary", disabled=saving):
                     first_doc = (primary_doc_raw or "").strip()
                     first_name = (primary_name_raw or "").strip()
                     first_email = (primary_email_raw or "").strip()
@@ -678,7 +682,7 @@ div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
 """,
                 unsafe_allow_html=True,
             )
-            if st.button("🔍", key="btn_search_trigger", help="Ejecutar búsqueda"):
+            if st.button("??", key="btn_search_trigger", help="Ejecutar búsqueda"):
                 _streamlit_rerun()
         q = q.strip()
         if q:
@@ -737,7 +741,7 @@ div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
             st.session_state["inline_edit_data"] = edited_df.iloc[0].to_dict()
             action_cols = st.columns([0.25, 0.25, 0.5])
             with action_cols[0]:
-                if st.button("💾 Guardar cambios", key="btn_inline_save"):
+                if st.button("?? Guardar cambios", key="btn_inline_save"):
                     df_all = service.load_registro()
                     df_all.loc[inline_idx] = edited_df.iloc[0]
                     service.save_registro(df_all)
@@ -1088,6 +1092,203 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
                             else:
                                 st.success(f"Se reasignaron {updated} registros a {support_name}.")
                                 _streamlit_rerun()
+
+
+def _tab_dashboard(tab, service: RegistroService, meta: dict) -> None:
+    with tab:
+        df_base = service.build_dashboard_dataframe()
+        if df_base.empty:
+            st.info("No hay datos suficientes para mostrar métricas.")
+            return
+        min_date = df_base["Fecha"].min().date() if "Fecha" in df_base.columns else None
+        max_date = df_base["Fecha"].max().date() if "Fecha" in df_base.columns else None
+        default_range = (min_date, max_date) if min_date and max_date else (None, None)
+        date_filter = st.date_input(
+            "Rango de fechas (según la fecha de registro)",
+            value=default_range if all(default_range) else None,
+        )
+        responsables_opts = sorted(
+            {utils.norm_str(val) or "" for val in df_base.get(config.ASSIGNMENT_COLUMN, pd.Series()).tolist() if val}
+        )
+        responsables_sel = st.multiselect(
+            "Responsables (registro / normalización)",
+            options=responsables_opts,
+        )
+        status_opts = sorted(
+            {utils.norm_str(val) or "" for val in df_base.get(config.PUBLICATION_STATUS_COLUMN, pd.Series()).tolist() if val}
+        )
+        status_sel = st.multiselect("Estado de publicación", options=status_opts)
+        start_date = date_filter[0] if isinstance(date_filter, tuple) and len(date_filter) == 2 else None
+        end_date = date_filter[1] if isinstance(date_filter, tuple) and len(date_filter) == 2 else None
+        df_filtered = service.filter_dashboard_dataframe(
+            df_base,
+            start_date=start_date,
+            end_date=end_date,
+            responsables=responsables_sel or None,
+            estados=status_sel or None,
+        )
+        metrics = service.calculate_dashboard_metrics(df_filtered)
+        general = metrics["general"]
+        kpi_cols = st.columns(5)
+        kpi_cols[0].metric("Total registradas", general["total"])
+        kpi_cols[1].metric("En proceso", general["en_proceso"])
+        kpi_cols[2].metric("Normalizadas", general["normalizadas"])
+        kpi_cols[3].metric("Con observaciones", general["con_observaciones"])
+        kpi_cols[4].metric("Publicadas", general["publicadas"], f"{general['avance']}% avance")
+
+        st.subheader("Pipeline del proceso")
+        pipeline = metrics["pipeline"]
+        pipeline_df = pd.DataFrame({"Etapa": list(pipeline.keys()), "Cantidad": list(pipeline.values())})
+        stage_order = list(pipeline.keys())
+        funnel_chart = (
+            alt.Chart(pipeline_df)
+            .mark_bar(color="#34d399")
+            .encode(
+                x=alt.X("Cantidad:Q", title="Cantidad"),
+                y=alt.Y("Etapa:N", sort=stage_order, title="Etapa"),
+                tooltip=["Etapa", "Cantidad"],
+            )
+        )
+        st.altair_chart(funnel_chart, use_container_width=True)
+
+        st.subheader("Productividad por responsable")
+        prod_cols = st.columns(2)
+        if metrics["productividad_normalizacion"]:
+            prod_norm_df = pd.DataFrame(
+                {
+                    "Responsable": list(metrics["productividad_normalizacion"].keys()),
+                    "Cantidad": list(metrics["productividad_normalizacion"].values()),
+                }
+            )
+            chart_norm = (
+                alt.Chart(prod_norm_df)
+                .mark_bar(color="#60a5fa")
+                .encode(
+                    x=alt.X("Responsable:N", sort="-y", title="Responsable"),
+                    y=alt.Y("Cantidad:Q", title="Tesis"),
+                    tooltip=["Responsable", "Cantidad"],
+                )
+            )
+            prod_cols[0].altair_chart(chart_norm, use_container_width=True)
+        else:
+            prod_cols[0].info("Sin registros de normalización en este filtro.")
+
+        if metrics["productividad_publicacion"]:
+            prod_pub_df = pd.DataFrame(
+                {
+                    "Responsable": list(metrics["productividad_publicacion"].keys()),
+                    "Cantidad": list(metrics["productividad_publicacion"].values()),
+                }
+            )
+            chart_pub = (
+                alt.Chart(prod_pub_df)
+                .mark_bar(color="#f472b6")
+                .encode(
+                    x=alt.X("Responsable:N", sort="-y", title="Responsable"),
+                    y=alt.Y("Cantidad:Q", title="Tesis"),
+                    tooltip=["Responsable", "Cantidad"],
+                )
+            )
+            prod_cols[1].altair_chart(chart_pub, use_container_width=True)
+        else:
+            prod_cols[1].info("Sin registros de publicación en este filtro.")
+
+        st.subheader("Calidad y observaciones")
+        quality = metrics["calidad"]
+        quality_cols = st.columns(3)
+        quality_cols[0].metric("Total observaciones", quality["observaciones"])
+        quality_cols[1].metric("Retrabajos detectados", quality["retrabajos"])
+        if quality["observaciones_por_responsable"]:
+            obs_df = pd.DataFrame(
+                {
+                    "Responsable": list(quality["observaciones_por_responsable"].keys()),
+                    "Observaciones": list(quality["observaciones_por_responsable"].values()),
+                }
+            )
+            pie_chart = (
+                alt.Chart(obs_df)
+                .mark_arc()
+                .encode(
+                    theta=alt.Theta(field="Observaciones", type="quantitative"),
+                    color=alt.Color(field="Responsable", type="nominal"),
+                    tooltip=["Responsable", "Observaciones"],
+                )
+                .properties(title="Observaciones por responsable")
+            )
+            st.altair_chart(pie_chart, use_container_width=True)
+        else:
+            quality_cols[2].info("Sin observaciones registradas en este rango.")
+
+        st.subheader("Tiempos del proceso (promedio en días)")
+        time_metrics = metrics["tiempos"]
+        if time_metrics:
+            t_cols = st.columns(len(time_metrics))
+            for idx, (label, value) in enumerate(time_metrics.items()):
+                t_cols[idx].metric(label.replace("_", " ").title(), value)
+        else:
+            st.info("No hay datos suficientes para calcular tiempos.")
+
+        st.subheader("Carga operativa")
+        workload = metrics["operativo"]
+        workload_cols = st.columns(3)
+        workload_cols[0].metric("Tesis sin asignar", workload.get("sin_asignar", 0))
+        workload_cols[1].metric("Tesis bloqueadas", workload.get("bloqueadas", 0))
+        if workload.get("pendientes_por_responsable"):
+            load_df = pd.DataFrame(
+                {
+                    "Responsable": list(workload["pendientes_por_responsable"].keys()),
+                    "Pendientes": list(workload["pendientes_por_responsable"].values()),
+                }
+            )
+            load_chart = (
+                alt.Chart(load_df)
+                .mark_bar(color="#facc15")
+                .encode(
+                    x=alt.X("Responsable:N", sort="-y"),
+                    y=alt.Y("Pendientes:Q"),
+                    tooltip=["Responsable", "Pendientes"],
+                )
+                .properties(title="Pendientes por responsable")
+            )
+            st.altair_chart(load_chart, use_container_width=True)
+        else:
+            workload_cols[2].info("Sin pendientes por responsable en este filtro.")
+
+        st.subheader("Evolución temporal")
+        if "Fecha" in df_filtered.columns:
+            df_time = df_filtered.copy()
+            df_time = df_time[df_time["Fecha"].notna()]
+            if not df_time.empty:
+                df_time = df_time.sort_values("Fecha")
+                df_time["Acumulado"] = range(1, len(df_time) + 1)
+                line_chart = (
+                    alt.Chart(df_time)
+                    .mark_line(color="#22d3ee")
+                    .encode(
+                        x=alt.X("Fecha:T", title="Fecha"),
+                        y=alt.Y("Acumulado:Q", title="Acumulado"),
+                        tooltip=["Fecha", "Acumulado"],
+                    )
+                )
+                st.altair_chart(line_chart, use_container_width=True)
+
+        st.subheader("Detalle de registros (según filtro)")
+        show_cols = [
+            config.REGISTRO_ID_COLUMN,
+            "Nombre_Usuario",
+            config.ASSIGNMENT_COLUMN,
+            config.NORMALIZATION_STATUS_COLUMN,
+            config.PUBLICATION_STATUS_COLUMN,
+            config.NORMALIZATION_REVIEWER_COLUMN,
+            config.PUBLICATION_PUBLISHED_BY_COLUMN,
+            config.NORMALIZATION_DATE_COLUMN,
+            config.PUBLICATION_DATE_COLUMN,
+        ]
+        show_cols = [c for c in show_cols if c in df_filtered.columns]
+        if show_cols:
+            st.dataframe(df_filtered[show_cols], use_container_width=True)
+        else:
+            st.dataframe(df_filtered, use_container_width=True)
 
 
 def render_app():

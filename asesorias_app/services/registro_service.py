@@ -555,3 +555,181 @@ class RegistroService:
         summary = self.summarize_publicacion(resumen)
         summary["updated"] = updated
         return summary
+
+    def build_dashboard_dataframe(self) -> pd.DataFrame:
+        df_all, _ = self._load_registro_for_publicacion()
+        df = df_all.copy()
+        for col in ["Fecha", config.NORMALIZATION_DATE_COLUMN, config.PUBLICATION_DATE_COLUMN]:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors="coerce")
+        return df
+
+    def filter_dashboard_dataframe(
+        self,
+        df: pd.DataFrame,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        responsables: Optional[List[str]] = None,
+        estados: Optional[List[str]] = None,
+    ) -> pd.DataFrame:
+        filtered = df.copy()
+        if start_date and "Fecha" in filtered.columns:
+            filtered = filtered[filtered["Fecha"] >= pd.Timestamp(start_date)]
+        if end_date and "Fecha" in filtered.columns:
+            filtered = filtered[filtered["Fecha"] <= pd.Timestamp(end_date)]
+        if responsables:
+            normalized_targets = {(norm_str(r) or "").lower() for r in responsables}
+            assignment_col = config.ASSIGNMENT_COLUMN
+            if assignment_col in filtered.columns:
+                filtered = filtered[
+                    filtered[assignment_col]
+                    .fillna("")
+                    .astype(str)
+                    .str.lower()
+                    .isin(normalized_targets)
+                ]
+        if estados:
+            status_col = config.PUBLICATION_STATUS_COLUMN
+            if status_col in filtered.columns:
+                estados_norm = {(norm_str(e) or "").lower() for e in estados}
+                filtered = filtered[
+                    filtered[status_col]
+                    .fillna("")
+                    .astype(str)
+                    .str.lower()
+                    .isin(estados_norm)
+                ]
+        return filtered
+
+    def calculate_dashboard_metrics(self, df: pd.DataFrame) -> Dict:
+        total = int(len(df))
+        norm_status_col = config.NORMALIZATION_STATUS_COLUMN
+        if norm_status_col in df.columns:
+            norm_status = df[norm_status_col].fillna("").astype(str).str.upper()
+        else:
+            norm_status = pd.Series([""] * len(df), index=df.index)
+        norm_ok = (config.NORMALIZATION_OK_VALUE or "OK").upper()
+        norm_ok_count = int((norm_status == norm_ok).sum())
+        pub_status_col = config.PUBLICATION_STATUS_COLUMN
+        if pub_status_col in df.columns:
+            pub_status = df[pub_status_col].fillna("").astype(str).str.upper()
+        else:
+            pub_status = pd.Series([""] * len(df), index=df.index)
+        pub_done = (config.PUBLICATION_DONE_VALUE or "PUBLICADO").upper()
+        pub_done_count = int((pub_status == pub_done).sum())
+        obs_col = config.NORMALIZATION_OBS_COLUMN
+        general_obs_col = "Observaciones"
+        obs_mask = pd.Series(False, index=df.index)
+        if obs_col in df.columns:
+            obs_mask |= df[obs_col].fillna("").astype(str).str.strip() != ""
+        if general_obs_col in df.columns:
+            obs_mask |= df[general_obs_col].fillna("").astype(str).str.strip() != ""
+        obs_total = int(obs_mask.sum())
+        general_metrics = {
+            "total": total,
+            "en_proceso": total - pub_done_count,
+            "normalizadas": norm_ok_count,
+            "con_observaciones": obs_total,
+            "publicadas": pub_done_count,
+            "avance": round((pub_done_count / total * 100) if total else 0, 2),
+        }
+        assignment_col = config.ASSIGNMENT_COLUMN
+        distributed = (
+            int(df[assignment_col].fillna("").astype(str).str.strip().ne("").sum())
+            if assignment_col in df.columns
+            else 0
+        )
+        pipeline = {
+            "registradas": total,
+            "distribuidas": distributed,
+            "en_normalizacion": int((norm_status != norm_ok).sum()),
+            "normalizadas": norm_ok_count,
+            "en_publicacion": int(((norm_status == norm_ok) & (pub_status != pub_done)).sum()),
+            "publicadas": pub_done_count,
+        }
+        reviewer_col = config.NORMALIZATION_REVIEWER_COLUMN
+        norm_productivity = {}
+        if reviewer_col in df.columns:
+            norm_productivity = (
+                df[df[reviewer_col].fillna("").astype(str).str.strip() != ""]
+                .groupby(reviewer_col)
+                .size()
+                .sort_values(ascending=False)
+                .to_dict()
+            )
+        publisher_col = config.PUBLICATION_PUBLISHED_BY_COLUMN
+        pub_productivity = {}
+        if publisher_col in df.columns:
+            pub_productivity = (
+                df[df[publisher_col].fillna("").astype(str).str.strip() != ""]
+                .groupby(publisher_col)
+                .size()
+                .sort_values(ascending=False)
+                .to_dict()
+            )
+        ranking = {}
+        for person, count in norm_productivity.items():
+            ranking[person] = ranking.get(person, 0) + int(count)
+        for person, count in pub_productivity.items():
+            ranking[person] = ranking.get(person, 0) + int(count)
+        ranking = dict(sorted(ranking.items(), key=lambda kv: kv[1], reverse=True))
+        quality = {
+            "observaciones": obs_total,
+            "observaciones_por_responsable": (
+                df[obs_mask]
+                .groupby(reviewer_col)[obs_col]
+                .count()
+                .sort_values(ascending=False)
+                .to_dict()
+                if reviewer_col in df.columns and obs_col in df.columns
+                else {}
+            ),
+            "retrabajos": int(((obs_mask) & (norm_status != norm_ok)).sum()),
+        }
+        time_metrics = {}
+        if "Fecha" in df.columns:
+            fecha = pd.to_datetime(df["Fecha"], errors="coerce")
+            if config.NORMALIZATION_DATE_COLUMN in df.columns:
+                t_norm = (pd.to_datetime(df[config.NORMALIZATION_DATE_COLUMN], errors="coerce") - fecha).dt.days.dropna()
+                if not t_norm.empty:
+                    time_metrics["registro_a_normalizacion"] = round(float(t_norm.mean()), 2)
+            if config.PUBLICATION_DATE_COLUMN in df.columns:
+                norm_date = pd.to_datetime(df.get(config.NORMALIZATION_DATE_COLUMN), errors="coerce")
+                t_pub = (pd.to_datetime(df[config.PUBLICATION_DATE_COLUMN], errors="coerce") - norm_date).dt.days.dropna()
+                if not t_pub.empty:
+                    time_metrics["normalizacion_a_publicacion"] = round(float(t_pub.mean()), 2)
+                t_total = (pd.to_datetime(df[config.PUBLICATION_DATE_COLUMN], errors="coerce") - fecha).dt.days.dropna()
+                if not t_total.empty:
+                    time_metrics["ciclo_total"] = round(float(t_total.mean()), 2)
+        workload = {}
+        if assignment_col in df.columns:
+            workload["pendientes_por_responsable"] = (
+                df[pub_status != pub_done]
+                .groupby(assignment_col)
+                .size()
+                .sort_values(ascending=False)
+                .to_dict()
+            )
+        workload["sin_asignar"] = (
+            int(df[assignment_col].fillna("").astype(str).str.strip().eq("").sum())
+            if assignment_col in df.columns
+            else 0
+        )
+        if "Fecha" in df.columns:
+            ageing_mask = (norm_status != norm_ok) & (
+                pd.Timestamp(datetime.utcnow()) - pd.to_datetime(df["Fecha"], errors="coerce")
+                > pd.Timedelta(days=30)
+            )
+            workload["bloqueadas"] = int(ageing_mask.sum())
+        else:
+            workload["bloqueadas"] = 0
+        return {
+            "general": general_metrics,
+            "pipeline": pipeline,
+            "productividad_normalizacion": norm_productivity,
+            "productividad_publicacion": pub_productivity,
+            "ranking": ranking,
+            "calidad": quality,
+            "tiempos": time_metrics,
+            "operativo": workload,
+        }
