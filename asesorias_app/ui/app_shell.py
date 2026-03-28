@@ -30,6 +30,8 @@ HIDDEN_COLUMNS = {"Asesor_Recursos_Académicos", "Nombre_Asesoría", "Asesor_Met
 DASHBOARD_BG_COLOR = "#f4fbf5"
 DASHBOARD_TEXT_COLOR = "#0d1f17"
 DASHBOARD_GREEN_PALETTE = ["#186f65", "#2f8f83", "#48b19b", "#73d6b8", "#a3e6c9", "#d6f7e7"]
+BUTTON_STYLE_STATE_KEY = "_button_styles_applied"
+ADD_BUTTON_STYLE_STATE_KEY = "_add_student_button_style"
 
 
 def _style_dashboard_chart(chart):
@@ -41,6 +43,108 @@ def _style_dashboard_chart(chart):
         .configure_view(strokeWidth=0, fill=DASHBOARD_BG_COLOR)
         .interactive()
     )
+
+
+def _inject_button_styles() -> None:
+    if st.session_state.get(BUTTON_STYLE_STATE_KEY):
+        return
+    st.session_state[BUTTON_STYLE_STATE_KEY] = True
+    primary_bg = DASHBOARD_GREEN_PALETTE[0]
+    primary_hover = "#14594f"
+    secondary_border = DASHBOARD_GREEN_PALETTE[0]
+    st.markdown(
+        f"""
+<style>
+div[data-testid="baseButton-primary"] button {{
+    background-color: {primary_bg};
+    color: #ffffff;
+    border-radius: 999px;
+    border: 1px solid {primary_bg};
+    padding: 0.45rem 1.5rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}}
+div[data-testid="baseButton-primary"] button:hover {{
+    background-color: {primary_hover};
+    border-color: {primary_hover};
+}}
+div[data-testid="baseButton-secondary"] button {{
+    background-color: transparent;
+    color: {DASHBOARD_TEXT_COLOR};
+    border-radius: 999px;
+    border: 1px solid {secondary_border};
+    padding: 0.4rem 1.25rem;
+    font-weight: 500;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}}
+div[data-testid="baseButton-secondary"] button:hover {{
+    background-color: #e2f5ec;
+    border-color: {primary_bg};
+}}
+div[data-testid="baseButton-primary"] button:focus,
+div[data-testid="baseButton-secondary"] button:focus {{
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(24, 111, 101, 0.35);
+}}
+div[data-testid="baseButton-primary"] button:disabled,
+div[data-testid="baseButton-secondary"] button:disabled {{
+    opacity: 0.55;
+    cursor: not-allowed;
+}}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def _button(label: str, **kwargs):
+    _inject_button_styles()
+    clean_label = utils.fix_text_encoding(label, strip=True) or ""
+    return st.button(clean_label, **kwargs)
+
+
+def _inject_add_student_button_style() -> None:
+    if st.session_state.get(ADD_BUTTON_STYLE_STATE_KEY):
+        return
+    st.session_state[ADD_BUTTON_STYLE_STATE_KEY] = True
+    st.markdown(
+        """
+<style>
+div[data-testid="baseButton-secondary"][id*="btn_add_extra_student"] button {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0 !important;
+    font-size: 1.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.75rem;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def _download_label_for_responsable(responsable: Optional[str], *, show_all: bool = False, context: str) -> str:
+    clean_responsable = utils.fix_text_encoding(responsable, strip=True) if responsable else responsable
+    primary = utils.fix_text_encoding(config.PUBLICATION_PRIMARY, strip=True)
+    secondary = (
+        utils.fix_text_encoding(config.PUBLICATION_RESPONSIBLES[1], strip=True)
+        if len(config.PUBLICATION_RESPONSIBLES) > 1
+        else None
+    )
+    if context == "publicacion":
+        if show_all:
+            return "Descargar registros de todos"
+        if clean_responsable == primary:
+            return "Descargar registros"
+        if clean_responsable == secondary:
+            return "Descargar registros asignados"
+    if clean_responsable:
+        return f"Descargar registros de {clean_responsable}"
+    return "Descargar registros"
 
 
 def _streamlit_rerun() -> None:
@@ -426,11 +530,12 @@ setTimeout(function(){{
             )
 
             st.caption("Estudiantes adicionales (opcional)")
-            btn_add_col, label_add_col = st.columns([0.1, 0.9])
+            btn_add_col, label_add_col = st.columns([0.15, 0.85])
             with btn_add_col:
-                st.button("?", on_click=_add_extra_student, key="btn_add_extra_student", type="secondary")
+                _button("+", on_click=_add_extra_student, key="btn_add_extra_student", type="secondary")
+                _inject_add_student_button_style()
             with label_add_col:
-                st.caption("Agregar estudiante")
+                st.caption("Agregar estudiante adicional")
             extra_n = _extra_students_count()
             extra_inputs = []
             for i in range(extra_n):
@@ -457,7 +562,7 @@ setTimeout(function(){{
                         )
                         extra_inputs.append((extra_doc_input, extra_name_input, extra_email_input))
                     with col_actions:
-                        st.button(
+                        _button(
                             "Eliminar",
                             key=f"btn_remove_extra_{i}",
                             type="secondary",
@@ -597,7 +702,7 @@ setTimeout(function(){{
                 saving = st.session_state.get("saving", False)
                 if saving:
                     st.info("Guardando registro...")
-                if st.button("?? Guardar registro", type="primary", disabled=saving):
+                if _button("Guardar registro", type="primary", disabled=saving):
                     first_doc = (primary_doc_raw or "").strip()
                     first_name = (primary_name_raw or "").strip()
                     first_email = (primary_email_raw or "").strip()
@@ -680,24 +785,7 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
         with search_cols[0]:
             q = st.text_input("Buscar por nombre o cédula", placeholder="Ej: Valentina o 1032331000", key="q_search")
         with search_cols[1]:
-            st.markdown(
-                """
-<style>
-div[data-testid="stButton"][id*="btn_search_trigger"] button {
-    background-color: transparent !important;
-    border: none !important;
-    color: #f1f5f9 !important;
-    font-size: 1.5rem !important;
-    padding: 0.1rem 0 !important;
-}
-div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
-    color: #c8f560 !important;
-}
-</style>
-""",
-                unsafe_allow_html=True,
-            )
-            if st.button("??", key="btn_search_trigger", help="Ejecutar búsqueda"):
+            if _button("Buscar", key="btn_search_trigger", help="Ejecutar búsqueda", type="primary"):
                 _streamlit_rerun()
         q = q.strip()
         if q:
@@ -717,7 +805,7 @@ div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
         with modify_cols[0]:
             st.markdown(" ")
         with modify_cols[1]:
-            if st.button("Modificar registro", key="btn_consulta_modify", disabled=len(filtered) != 1):
+            if _button("Modificar registro", key="btn_consulta_modify", disabled=len(filtered) != 1, type="secondary"):
                 if len(filtered) == 1:
                     selected_idx = int(filtered.index[0])
                     row = df_latest.loc[selected_idx]
@@ -756,7 +844,7 @@ div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
             st.session_state["inline_edit_data"] = edited_df.iloc[0].to_dict()
             action_cols = st.columns([0.25, 0.25, 0.5])
             with action_cols[0]:
-                if st.button("?? Guardar cambios", key="btn_inline_save"):
+                if _button("Guardar cambios", key="btn_inline_save", type="primary"):
                     df_all = service.load_registro()
                     df_all.loc[inline_idx] = edited_df.iloc[0]
                     service.save_registro(df_all)
@@ -766,7 +854,7 @@ div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
                     st.session_state["reset_pending"] = True
                     _streamlit_rerun()
             with action_cols[1]:
-                if st.button("Cancelar edición", key="btn_inline_cancel"):
+                if _button("Cancelar edición", key="btn_inline_cancel", type="secondary"):
                     st.session_state.pop("inline_edit_idx", None)
                     st.session_state.pop("inline_edit_data", None)
                     _streamlit_rerun()
@@ -825,7 +913,7 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                 value=default_text,
                 key="assignment_people_text",
             )
-            distribute = st.button("Distribuir registros", type="primary")
+            distribute = _button("Distribuir registros", type="primary")
             if distribute:
                 responsables = [line.strip() for line in responsables_text.splitlines() if line.strip()]
                 with st.spinner("Distribuyendo registros existentes..."):
@@ -883,7 +971,7 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                             else:
                                 safe_name = responsable.lower().replace(" ", "_")
                                 st.download_button(
-                                    f"Descargar registros de {responsable}",
+                                    _download_label_for_responsable(responsable, context="normalizacion"),
                                     data=download_payload,
                                     file_name=f"normalizacion_{safe_name}.xlsx",
                                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -929,7 +1017,7 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                                 column_config=column_config,
                                 key=f"editor_normalizacion_{responsable}",
                             )
-                            if st.button("Guardar avances", key=f"btn_save_normalizacion_{responsable}"):
+                            if _button("Guardar avances", key=f"btn_save_normalizacion_{responsable}", type="primary"):
                                 updates = []
                                 for idx_row, row in edited_df.iterrows():
                                     updates.append(
@@ -1008,7 +1096,7 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
         else:
             safe_name = (responsable.lower().replace(" ", "_")) if not show_all else "todos"
             st.download_button(
-                f"Descargar registros de {responsable if not show_all else 'todos'}",
+                _download_label_for_responsable(responsable if not show_all else "todos", show_all=show_all, context="publicacion"),
                 data=download_payload,
                 file_name=f"publicacion_{safe_name}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1046,7 +1134,7 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
             column_config=column_config,
             key=f"editor_publicacion_{responsable}",
         )
-        if st.button("Guardar publicación", key=f"btn_save_publicacion_{responsable}"):
+        if _button("Guardar publicación", key=f"btn_save_publicacion_{responsable}", type="primary"):
             updates = [
                 {
                     "id": idx,
@@ -1092,7 +1180,7 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
                     options=options,
                     key="publicacion_assign_list",
                 )
-                if st.button("Asignar a Diana", key="btn_assign_publicacion"):
+                if _button("Asignar a Diana", key="btn_assign_publicacion", type="primary"):
                     ids_to_assign = [display_to_id[label] for label in seleccion]
                     if not ids_to_assign:
                         st.warning("Selecciona al menos un registro para reasignar.")

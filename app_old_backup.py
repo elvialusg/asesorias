@@ -489,9 +489,9 @@ with tab1:
 
         cadd, crem, _ = st.columns([0.25, 0.25, 0.5])
         with cadd:
-            st.button("➕ Agregar asesoría", on_click=add_asesoria, key="btn_add_asesoria")
+            st.button("Agregar asesoría", on_click=add_asesoria, key="btn_add_asesoria")
         with crem:
-            st.button("➖ Quitar última", on_click=remove_asesoria, disabled=(n <= 1), key="btn_remove_asesoria")
+            st.button("Quitar última", on_click=remove_asesoria, disabled=(n <= 1), key="btn_remove_asesoria")
 
         col8_name = "Asesor_Metodológico, Modalidad_Asesoría2, Asesor_Metodológico, Modalidad_Asesoría2"
         asesorias_payload = []
@@ -569,7 +569,7 @@ with tab1:
         b1, b2 = st.columns(2)
 
         with b1:
-            if st.button("✅ Guardar registro", type="primary", key="btn_save_new"):
+            if st.button("Guardar registro", type="primary", key="btn_save_new"):
                 if not base_row["Cédula"] and not base_row["Nombre_Usuario"]:
                     st.warning("Escribe al menos el **Nombre del usuario** o la **Cédula**.")
                 else:
@@ -603,7 +603,7 @@ with tab1:
                         schedule_reset()
 
         with b2:
-            if st.button("📝 Modificar / Adicionar asesoría", type="secondary", key="btn_mod_add"):
+            if st.button("Modificar / Adicionar asesoría", type="secondary", key="btn_mod_add"):
                 if not base_row["Cédula"] and not base_row["Nombre_Usuario"]:
                     st.warning("Escribe al menos el **Nombre del usuario** o la **Cédula** para encontrarlo.")
                 else:
@@ -704,7 +704,7 @@ with tab2:
             st.write(f"- **Asesor Metodológico:** {sel_row.get('Asesor Metodológico','')}")
 
             confirm_one = st.checkbox("Confirmo eliminar SOLO esta asesoría del historial", key="confirm_delete_one")
-            if st.button("🗑 Eliminar asesoría seleccionada", type="primary", disabled=not confirm_one, key="btn_delete_one"):
+            if st.button("Eliminar asesoría seleccionada", type="primary", disabled=not confirm_one, key="btn_delete_one"):
                 df_all = load_registro()
                 pos = int(n_to_delete) - 1
                 updated = delete_history_item(df_all.loc[sel_idx].copy(), pos)
@@ -738,7 +738,7 @@ with tab2:
         selected = st.selectbox("Selecciona el estudiante (fila) a eliminar", options, format_func=lambda x: x[1], key="del_select")
         idx_to_delete = selected[0]
         confirm = st.checkbox("Confirmo que deseo eliminar este registro", key="del_confirm")
-        if st.button("❌ Eliminar registro seleccionado", type="primary", disabled=not confirm, key="del_btn"):
+        if st.button("Eliminar registro seleccionado", type="primary", disabled=not confirm, key="del_btn"):
             delete_registro(idx_to_delete)
             st.success("Registro eliminado correctamente ✅")
             st.rerun()
@@ -773,7 +773,7 @@ with tab3:
             df_up = pd.read_excel(up)
             st.write("Vista previa (primeras 10 filas):")
             st.dataframe(df_up.head(10), use_container_width=True)
-            if st.button("🚀 Importar / Actualizar", type="primary", key="btn_bulk_import"):
+            if st.button("Importar / Actualizar", type="primary", key="btn_bulk_import"):
                 bulk_import(df_up)
                 st.success("Importación completada ✅")
                 st.rerun()

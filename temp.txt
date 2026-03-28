@@ -33,7 +33,7 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
             return
         search_cols = st.columns([0.85, 0.15])
         with search_cols[0]:
-            q = st.text_input("Buscar por nombre o cédula", placeholder="Ej: Valentina o 1032331000", key="q_search")
+            q = st.text_input("Buscar por nombre o cÃ©dula", placeholder="Ej: Valentina o 1032331000", key="q_search")
         with search_cols[1]:
             st.markdown(
                 """
@@ -52,7 +52,7 @@ div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
 """,
                 unsafe_allow_html=True,
             )
-            if st.button("??", key="btn_search_trigger", help="Ejecutar búsqueda"):
+            if st.button("Buscar", key="btn_search_trigger", help="Ejecutar bÃºsqueda"):
                 _streamlit_rerun()
         q = q.strip()
         if q:
@@ -60,7 +60,7 @@ div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
 
             def match_row(row):
                 name = str(row.get("Nombre_Usuario", "")).lower()
-                ced = str(row.get("Cédula", "")).lower()
+                ced = str(row.get("CÃ©dula", "")).lower()
                 return q_low in name or q_low in ced
 
             filtered = df_latest[df_latest.apply(match_row, axis=1)].copy()
@@ -77,7 +77,7 @@ div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
                     selected_idx = int(filtered.index[0])
                     row = df_latest.loc[selected_idx]
                     clean_row = row.drop(labels=HIDDEN_COLUMNS, errors="ignore")
-                    ced_value = str(row.get("Cédula") or row.get("C?dula") or "").strip()
+                    ced_value = str(row.get("CÃ©dula") or row.get("C?dula") or "").strip()
                     st.session_state["editing_target"] = {
                         "index": selected_idx,
                         "cedula": ced_value,
@@ -86,7 +86,7 @@ div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
                     st.session_state["pending_prefill_doc"] = ced_value
                     st.session_state["inline_edit_idx"] = selected_idx
                     st.session_state["inline_edit_data"] = clean_row.to_dict()
-                    st.success("Registro listo para modificar (puedes editarlo abajo o en la pestaña Registrar).")
+                    st.success("Registro listo para modificar (puedes editarlo abajo o en la pestaÃ±a Registrar).")
                     _streamlit_rerun()
 
 
