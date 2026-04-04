@@ -906,6 +906,7 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
         with col_center:
             st.subheader("Normalización")
             st.markdown('<h3 style="font-size:1.2rem; margin-bottom:0.5rem;">Distribuir registros existentes</h3>', unsafe_allow_html=True)
+            st.caption("La distribución se realiza por tesis; todos los estudiantes de una tesis quedan con la misma asignación.")
             default_people = getattr(config, "DEFAULT_ASSIGNMENT_PEOPLE", [])
             default_text = "\n".join(default_people)
             responsables_text = st.text_area(
@@ -922,15 +923,25 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                     except Exception as exc:  # pragma: no cover - Streamlit feedback
                         st.error(f"No se pudo completar la distribución: {exc}")
                     else:
-                        st.success(
-                            f"Distribución completada. Registros asignados: {result['total_valid']}. "
-                            f"Columna utilizada: {result['assignment_column']}."
+                        st.success("Distribución completada por tesis.")
+                        st.info(
+                            f"Tesis distribuidas: **{result.get('total_thesis', 0)}** · Estudiantes impactados: **{result.get('total_students', 0)}**"
                         )
+                        st.caption(
+                            f"Columna de asignación: {result.get('assignment_column')} · Columna de tesis: {result.get('thesis_column')}"
+                        )
+                        thesis_without = result.get("thesis_without_title", 0)
+                        if thesis_without:
+                            st.warning(
+                                f"{thesis_without} tesis no tenían título registrado y se asignaron individualmente. Revísalas desde la pestaña Consultar usuario."
+                            )
                         st.markdown("#### Resumen por persona")
                         summary_cols = st.columns(2)
-                        for idx, (persona, cantidad) in enumerate(result["counts"].items()):
+                        for idx, (persona, data) in enumerate(result["counts"].items()):
+                            tesis = data.get("tesis", 0)
+                            estudiantes = data.get("estudiantes", 0)
                             with summary_cols[idx % 2]:
-                                st.metric(persona, cantidad)
+                                st.metric(persona, f"{tesis} tesis", f"{estudiantes} estudiantes")
                         ignored = result.get("ignored_rows", 0)
                         if ignored:
                             st.warning(
@@ -991,11 +1002,16 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                                 else [""] * len(asignados_df)
                             )
                             ok_value = (config.NORMALIZATION_OK_VALUE or "OK").upper()
+                            programa_col = "Nombre_Programa" if "Nombre_Programa" in asignados_df.columns else None
+                            thesis_source_col = RegistroService._tesis_column(asignados_df)
+                            thesis_col = thesis_source_col or getattr(config, "THESIS_PRIMARY_COLUMN", "Título_Trabajo_Grado")
                             edit_source = pd.DataFrame(
                                 {
                                     "ID": asignados_df[id_col].astype(str),
                                     "Nombre": asignados_df.get("Nombre_Usuario", ""),
                                     "Cedula": ced_values,
+                                    "Programa": asignados_df.get(programa_col, "") if programa_col else "",
+                                    "Tesis": asignados_df.get(thesis_col, "") if thesis_col in asignados_df.columns else "",
                                     "Revisado": asignados_df[status_col]
                                     .fillna("")
                                     .astype(str)
@@ -1008,6 +1024,8 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                             column_config = {
                                 "Nombre": st.column_config.TextColumn("Nombre de estudiante", disabled=True),
                                 "Cedula": st.column_config.TextColumn("Cédula", disabled=True),
+                                "Programa": st.column_config.TextColumn("Programa académico", disabled=True),
+                                "Tesis": st.column_config.TextColumn("Trabajo de grado / tesis", disabled=True),
                                 "Revisado": st.column_config.CheckboxColumn("Estado OK"),
                                 "Observacion": st.column_config.TextColumn("Observación de normalización"),
                             }

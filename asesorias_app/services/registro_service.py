@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 from datetime import date, datetime
+import random
 from typing import Dict, List, Optional
 from uuid import uuid4
 
@@ -155,27 +156,46 @@ class RegistroService:
                 f"No existe la columna '{assignment_col}'. Verifica la configuración o ejecuta la normalización primero."
             )
 
+        thesis_col = self._tesis_column(df)
+        if not thesis_col:
+            raise RuntimeError(
+                "No encuentro una columna que identifique la tesis. "
+                "Verifica la configuración de THESIS_PRIMARY_COLUMN o agrega una columna de título."
+            )
+
         valid_mask = df.apply(self._is_valid_registro, axis=1)
         df_valid = df.loc[valid_mask].copy()
         ignored = int((~valid_mask).sum())
         if df_valid.empty:
             raise ValueError("No hay registros válidos (con nombre o cédula) para distribuir.")
 
-        shuffled = df_valid.sample(frac=1, random_state=seed)
-        counts = {resp: 0 for resp in responsables_clean}
+        thesis_groups = self._build_tesis_groups(df_valid, thesis_col)
+        if not thesis_groups:
+            raise ValueError("No hay tesis para distribuir.")
+
+        rng = random.Random(seed)
+        rng.shuffle(thesis_groups)
+        counts = {resp: {"tesis": 0, "estudiantes": 0} for resp in responsables_clean}
         reps = len(responsables_clean)
-        for idx, (row_idx, _) in enumerate(shuffled.iterrows()):
+        for idx, group in enumerate(thesis_groups):
             responsible = responsables_clean[idx % reps]
-            df.loc[row_idx, assignment_col] = responsible
-            counts[responsible] += 1
+            df.loc[group["indices"], assignment_col] = responsible
+            counts[responsible]["tesis"] += 1
+            counts[responsible]["estudiantes"] += group["students"]
 
         self.save_registro(df)
+        total_students = sum(group["students"] for group in thesis_groups)
+        thesis_without_title = sum(1 for group in thesis_groups if group["sin_titulo"])
         return {
             "total_valid": int(len(df_valid)),
             "ignored_rows": ignored,
             "counts": counts,
             "seed": seed,
             "assignment_column": assignment_col,
+            "thesis_column": thesis_col,
+            "total_thesis": len(thesis_groups),
+            "total_students": total_students,
+            "thesis_without_title": thesis_without_title,
         }
 
     def _load_registro_for_normalizacion(self) -> pd.DataFrame:
@@ -228,6 +248,55 @@ class RegistroService:
             if candidate in df.columns:
                 return candidate
         return None
+
+    @staticmethod
+    def _tesis_column(df: pd.DataFrame) -> Optional[str]:
+        configured = getattr(config, "THESIS_PRIMARY_COLUMN", None)
+        candidates = []
+        if configured:
+            candidates.append(configured)
+        candidates.extend(getattr(config, "THESIS_COLUMN_CANDIDATES", []))
+        seen = set()
+        ordered_candidates = []
+        for col in candidates:
+            if not col or col in seen:
+                continue
+            ordered_candidates.append(col)
+            seen.add(col)
+        for candidate in ordered_candidates:
+            if candidate in df.columns:
+                return candidate
+        keywords = getattr(config, "THESIS_COLUMN_KEYWORDS", [])
+        for col in df.columns:
+            lowered = col.lower()
+            if any(keyword in lowered for keyword in keywords):
+                return col
+        return None
+
+    @staticmethod
+    def _build_tesis_groups(df: pd.DataFrame, thesis_col: str) -> List[Dict]:
+        groups = {}
+        thesisless_rows = []
+        for row_idx, row in df.iterrows():
+            thesis_value = norm_str(row.get(thesis_col))
+            if thesis_value:
+                groups.setdefault(thesis_value, []).append(row_idx)
+            else:
+                thesisless_rows.append(row_idx)
+        grouped = [
+            {"tesis": tesis, "indices": indices, "students": len(indices), "sin_titulo": False}
+            for tesis, indices in groups.items()
+        ]
+        for counter, row_idx in enumerate(thesisless_rows, 1):
+            grouped.append(
+                {
+                    "tesis": f"Tesis sin título #{counter}",
+                    "indices": [row_idx],
+                    "students": 1,
+                    "sin_titulo": True,
+                }
+            )
+        return grouped
 
     def list_responsables(self) -> List[str]:
         df = self._load_registro_for_normalizacion()
