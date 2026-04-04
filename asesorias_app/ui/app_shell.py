@@ -990,7 +990,6 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
 
                             status_col = config.NORMALIZATION_STATUS_COLUMN
                             obs_col = config.NORMALIZATION_OBS_COLUMN
-                            id_col = config.REGISTRO_ID_COLUMN
                             ced_col = None
                             for candidate in ("C\u01f8dula", "C\u00e9dula", "C?dula", "Cedula"):
                                 if candidate in asignados_df.columns:
@@ -1005,9 +1004,10 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                             programa_col = "Nombre_Programa" if "Nombre_Programa" in asignados_df.columns else None
                             thesis_source_col = RegistroService._tesis_column(asignados_df)
                             thesis_col = thesis_source_col or getattr(config, "THESIS_PRIMARY_COLUMN", "Título_Trabajo_Grado")
+                            row_ids = asignados_df.index.astype(str)
                             edit_source = pd.DataFrame(
                                 {
-                                    "ID": asignados_df[id_col].astype(str),
+                                    "ID": row_ids,
                                     "Nombre": asignados_df.get("Nombre_Usuario", ""),
                                     "Cedula": ced_values,
                                     "Programa": asignados_df.get(programa_col, "") if programa_col else "",
@@ -1119,7 +1119,6 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
                 file_name=f"publicacion_{safe_name}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
-        id_col = config.REGISTRO_ID_COLUMN
         assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
         state_col = config.PUBLICATION_STATUS_COLUMN
         obs_col = config.PUBLICATION_OBS_COLUMN
@@ -1128,9 +1127,10 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
             df_responsable[ced_col].astype(str) if ced_col else [""] * len(df_responsable)
         )
         done_value = (config.PUBLICATION_DONE_VALUE or "Publicado").upper()
+        row_ids = df_responsable.index.astype(str)
         edit_source = pd.DataFrame(
             {
-                "ID": df_responsable[id_col].astype(str),
+                "ID": row_ids,
                 "Nombre": df_responsable.get("Nombre_Usuario", ""),
                 "Cedula": ced_values,
                 "Asignado": df_responsable.get(assignment_col, ""),
@@ -1189,7 +1189,7 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
                 for _, row in pending_gloria.iterrows():
                     label = row.get("Nombre_Usuario", "Sin nombre")
                     ced_val = row.get(ced_col_pending, "") if ced_col_pending else ""
-                    uid = str(row[id_col])
+                    uid = str(row.name)
                     text = f"{label} ({ced_val}) - {uid}"
                     options.append(text)
                     display_to_id[text] = uid

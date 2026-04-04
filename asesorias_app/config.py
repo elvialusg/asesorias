@@ -76,7 +76,6 @@ PUBLICATION_PENDING_VALUE = "Pendiente"
 PUBLICATION_DONE_VALUE = "Publicado"
 
 REGISTRO_COLUMNS = [
-
     "Cédula",
     "Nombre_Usuario",
     "Correo_Electronico",
@@ -95,7 +94,6 @@ REGISTRO_COLUMNS = [
     "Aprobación_Similitud",
     "Paz_y_Salvo",
     ASSIGNMENT_COLUMN,
-    REGISTRO_ID_COLUMN,
     NORMALIZATION_STATUS_COLUMN,
     NORMALIZATION_REVIEWER_COLUMN,
     NORMALIZATION_DATE_COLUMN,

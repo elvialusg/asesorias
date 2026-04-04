@@ -6,8 +6,6 @@ import io
 from datetime import date, datetime
 import random
 from typing import Dict, List, Optional
-from uuid import uuid4
-
 import pandas as pd
 
 from asesorias_app import config
@@ -203,7 +201,6 @@ class RegistroService:
         changed = False
         required = [
             config.ASSIGNMENT_COLUMN,
-            config.REGISTRO_ID_COLUMN,
             config.NORMALIZATION_STATUS_COLUMN,
             config.NORMALIZATION_REVIEWER_COLUMN,
             config.NORMALIZATION_DATE_COLUMN,
@@ -225,22 +222,13 @@ class RegistroService:
             if empty_status.any():
                 df.loc[empty_status, status_col] = config.NORMALIZATION_PENDING_VALUE
                 changed = True
-        if self._fill_missing_ids(df):
+        registro_id_col = config.REGISTRO_ID_COLUMN
+        if registro_id_col in df.columns:
+            df = df.drop(columns=[registro_id_col])
             changed = True
         if changed:
             self.save_registro(df)
         return df
-
-    def _fill_missing_ids(self, df: pd.DataFrame) -> bool:
-        id_col = config.REGISTRO_ID_COLUMN
-        if id_col not in df.columns:
-            df[id_col] = ""
-            return True
-        mask = df[id_col].astype(str).str.strip().isin(["", "nan", "None"])
-        if not mask.any():
-            return False
-        df.loc[mask, id_col] = [str(uuid4()) for _ in range(mask.sum())]
-        return True
 
     @staticmethod
     def _cedula_column(df: pd.DataFrame) -> Optional[str]:
@@ -371,7 +359,7 @@ class RegistroService:
         df_resp = self.get_registros_por_responsable(responsable)
         if df_resp.empty:
             raise ValueError("No hay registros asignados a esta persona")
-        columns = [config.REGISTRO_ID_COLUMN, "Nombre_Usuario"]
+        columns = ["Nombre_Usuario"]
         ced_col = self._cedula_column(df_resp)
         if ced_col:
             columns.append(ced_col)
@@ -410,14 +398,14 @@ class RegistroService:
         updated = 0
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         target_name = (norm_str(responsable) or "").lower()
+        index_lookup = {str(idx): idx for idx in df.index}
         for item in updates:
             uid = norm_str(item.get("id") or item.get(id_col))
             if not uid:
                 continue
-            matches = df[df[id_col].astype(str) == uid].index
-            if matches.empty:
+            idx = index_lookup.get(uid)
+            if idx is None:
                 continue
-            idx = matches[0]
             assigned = (norm_str(df.at[idx, assignment_col]) or "").lower()
             if assigned != target_name:
                 continue
@@ -493,7 +481,7 @@ class RegistroService:
         )
         if df_resp.empty:
             raise ValueError("No hay registros de publicacion para descargar con este filtro")
-        columns = [config.REGISTRO_ID_COLUMN, "Nombre_Usuario"]
+        columns = ["Nombre_Usuario"]
         ced_col = self._cedula_column(df_resp)
         if ced_col:
             columns.append(ced_col)
@@ -521,22 +509,21 @@ class RegistroService:
         if target_clean not in allowed:
             raise ValueError("Responsable de publicacion no valido.")
         df_all, ready_df = self._load_registro_for_publicacion()
-        id_col = config.REGISTRO_ID_COLUMN
         assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
         state_col = config.PUBLICATION_STATUS_COLUMN
         pub_by_col = config.PUBLICATION_PUBLISHED_BY_COLUMN
         date_col = config.PUBLICATION_DATE_COLUMN
         obs_col = config.PUBLICATION_OBS_COLUMN
-        allowed_ids = set(ready_df[id_col].astype(str))
+        allowed_ids = {str(idx) for idx in ready_df.index}
+        index_lookup = {str(idx): idx for idx in df_all.index}
         normalized_ids = [norm_str(i) for i in ids if norm_str(i)]
         updated = 0
         for uid in normalized_ids:
             if uid not in allowed_ids:
                 continue
-            matches = df_all[df_all[id_col].astype(str) == uid].index
-            if matches.empty:
+            idx = index_lookup.get(uid)
+            if idx is None:
                 continue
-            idx = matches[0]
             df_all.at[idx, assignment_col] = target
             df_all.at[idx, state_col] = config.PUBLICATION_PENDING_VALUE
             df_all.at[idx, pub_by_col] = ""
@@ -571,26 +558,25 @@ class RegistroService:
 
     def update_publicacion_estado(self, responsable: str, updates: List[Dict]) -> Dict:
         df_all, ready_df = self._load_registro_for_publicacion()
-        id_col = config.REGISTRO_ID_COLUMN
         assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
         state_col = config.PUBLICATION_STATUS_COLUMN
         pub_by_col = config.PUBLICATION_PUBLISHED_BY_COLUMN
         date_col = config.PUBLICATION_DATE_COLUMN
         obs_col = config.PUBLICATION_OBS_COLUMN
         target_norm = (norm_str(responsable) or "").lower()
-        allowed = set(ready_df[id_col].astype(str))
+        allowed = {str(idx) for idx in ready_df.index}
+        index_lookup = {str(idx): idx for idx in df_all.index}
         updated = 0
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         done_value = config.PUBLICATION_DONE_VALUE
         pending_value = config.PUBLICATION_PENDING_VALUE
         for item in updates:
-            uid = norm_str(item.get("id") or item.get(id_col))
+            uid = norm_str(item.get("id"))
             if not uid or uid not in allowed:
                 continue
-            matches = df_all[df_all[id_col].astype(str) == uid].index
-            if matches.empty:
+            idx = index_lookup.get(uid)
+            if idx is None:
                 continue
-            idx = matches[0]
             assigned = (norm_str(df_all.at[idx, assignment_col]) or "").lower()
             if assigned != target_norm:
                 continue
