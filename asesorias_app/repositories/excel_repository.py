@@ -10,11 +10,12 @@ import openpyxl
 import pandas as pd
 
 from asesorias_app import config
+from asesorias_app.core.utils import clean_text_dataframe, fix_text_encoding
 
 
 def normalize_registro_df(df: pd.DataFrame) -> pd.DataFrame:
     """Garantiza columnas esperadas y descarta campos obsoletos."""
-    df = df.copy()
+    df = clean_text_dataframe(df)
     aliases = getattr(config, "COLUMN_ALIASES", {})
     if aliases:
         rename_map = {}
@@ -58,7 +59,7 @@ class ExcelRepository:
                 value = ws.cell(row_idx, col_idx).value
                 if value is None:
                     continue
-                text = str(value).strip()
+                text = fix_text_encoding(str(value), strip=True)
                 if text:
                     vals.append(text)
             unique: List[str] = []
@@ -73,11 +74,11 @@ class ExcelRepository:
         for col in range(1, ws.max_column + 1):
             header = ws.cell(1, col).value
             if header:
-                headers[str(header).strip()] = col
+                headers[fix_text_encoding(str(header), strip=True)] = col
 
         lists = {name: extract_col(idx) for name, idx in headers.items()}
-        df_fac = pd.read_excel(self.template_path, sheet_name=config.SHEET_FACULTADES)
-        df_prog = pd.read_excel(self.template_path, sheet_name=config.SHEET_PROGRAMAS)
+        df_fac = clean_text_dataframe(pd.read_excel(self.template_path, sheet_name=config.SHEET_FACULTADES))
+        df_prog = clean_text_dataframe(pd.read_excel(self.template_path, sheet_name=config.SHEET_PROGRAMAS))
 
         return {"lists": lists, "df_fac": df_fac, "df_prog": df_prog}
 

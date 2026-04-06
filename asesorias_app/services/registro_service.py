@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import io
 from datetime import date, datetime
+import random
 from typing import Dict, List, Optional
-from uuid import uuid4
-
 import pandas as pd
 
 from asesorias_app import config
@@ -155,27 +154,46 @@ class RegistroService:
                 f"No existe la columna '{assignment_col}'. Verifica la configuración o ejecuta la normalización primero."
             )
 
+        thesis_col = self._tesis_column(df)
+        if not thesis_col:
+            raise RuntimeError(
+                "No encuentro una columna que identifique la tesis. "
+                "Verifica la configuración de THESIS_PRIMARY_COLUMN o agrega una columna de título."
+            )
+
         valid_mask = df.apply(self._is_valid_registro, axis=1)
         df_valid = df.loc[valid_mask].copy()
         ignored = int((~valid_mask).sum())
         if df_valid.empty:
             raise ValueError("No hay registros válidos (con nombre o cédula) para distribuir.")
 
-        shuffled = df_valid.sample(frac=1, random_state=seed)
-        counts = {resp: 0 for resp in responsables_clean}
+        thesis_groups = self._build_tesis_groups(df_valid, thesis_col)
+        if not thesis_groups:
+            raise ValueError("No hay tesis para distribuir.")
+
+        rng = random.Random(seed)
+        rng.shuffle(thesis_groups)
+        counts = {resp: {"tesis": 0, "estudiantes": 0} for resp in responsables_clean}
         reps = len(responsables_clean)
-        for idx, (row_idx, _) in enumerate(shuffled.iterrows()):
+        for idx, group in enumerate(thesis_groups):
             responsible = responsables_clean[idx % reps]
-            df.loc[row_idx, assignment_col] = responsible
-            counts[responsible] += 1
+            df.loc[group["indices"], assignment_col] = responsible
+            counts[responsible]["tesis"] += 1
+            counts[responsible]["estudiantes"] += group["students"]
 
         self.save_registro(df)
+        total_students = sum(group["students"] for group in thesis_groups)
+        thesis_without_title = sum(1 for group in thesis_groups if group["sin_titulo"])
         return {
             "total_valid": int(len(df_valid)),
             "ignored_rows": ignored,
             "counts": counts,
             "seed": seed,
             "assignment_column": assignment_col,
+            "thesis_column": thesis_col,
+            "total_thesis": len(thesis_groups),
+            "total_students": total_students,
+            "thesis_without_title": thesis_without_title,
         }
 
     def _load_registro_for_normalizacion(self) -> pd.DataFrame:
@@ -183,7 +201,6 @@ class RegistroService:
         changed = False
         required = [
             config.ASSIGNMENT_COLUMN,
-            config.REGISTRO_ID_COLUMN,
             config.NORMALIZATION_STATUS_COLUMN,
             config.NORMALIZATION_REVIEWER_COLUMN,
             config.NORMALIZATION_DATE_COLUMN,
@@ -205,22 +222,13 @@ class RegistroService:
             if empty_status.any():
                 df.loc[empty_status, status_col] = config.NORMALIZATION_PENDING_VALUE
                 changed = True
-        if self._fill_missing_ids(df):
+        registro_id_col = config.REGISTRO_ID_COLUMN
+        if registro_id_col in df.columns:
+            df = df.drop(columns=[registro_id_col])
             changed = True
         if changed:
             self.save_registro(df)
         return df
-
-    def _fill_missing_ids(self, df: pd.DataFrame) -> bool:
-        id_col = config.REGISTRO_ID_COLUMN
-        if id_col not in df.columns:
-            df[id_col] = ""
-            return True
-        mask = df[id_col].astype(str).str.strip().isin(["", "nan", "None"])
-        if not mask.any():
-            return False
-        df.loc[mask, id_col] = [str(uuid4()) for _ in range(mask.sum())]
-        return True
 
     @staticmethod
     def _cedula_column(df: pd.DataFrame) -> Optional[str]:
@@ -228,6 +236,55 @@ class RegistroService:
             if candidate in df.columns:
                 return candidate
         return None
+
+    @staticmethod
+    def _tesis_column(df: pd.DataFrame) -> Optional[str]:
+        configured = getattr(config, "THESIS_PRIMARY_COLUMN", None)
+        candidates = []
+        if configured:
+            candidates.append(configured)
+        candidates.extend(getattr(config, "THESIS_COLUMN_CANDIDATES", []))
+        seen = set()
+        ordered_candidates = []
+        for col in candidates:
+            if not col or col in seen:
+                continue
+            ordered_candidates.append(col)
+            seen.add(col)
+        for candidate in ordered_candidates:
+            if candidate in df.columns:
+                return candidate
+        keywords = getattr(config, "THESIS_COLUMN_KEYWORDS", [])
+        for col in df.columns:
+            lowered = col.lower()
+            if any(keyword in lowered for keyword in keywords):
+                return col
+        return None
+
+    @staticmethod
+    def _build_tesis_groups(df: pd.DataFrame, thesis_col: str) -> List[Dict]:
+        groups = {}
+        thesisless_rows = []
+        for row_idx, row in df.iterrows():
+            thesis_value = norm_str(row.get(thesis_col))
+            if thesis_value:
+                groups.setdefault(thesis_value, []).append(row_idx)
+            else:
+                thesisless_rows.append(row_idx)
+        grouped = [
+            {"tesis": tesis, "indices": indices, "students": len(indices), "sin_titulo": False}
+            for tesis, indices in groups.items()
+        ]
+        for counter, row_idx in enumerate(thesisless_rows, 1):
+            grouped.append(
+                {
+                    "tesis": f"Tesis sin título #{counter}",
+                    "indices": [row_idx],
+                    "students": 1,
+                    "sin_titulo": True,
+                }
+            )
+        return grouped
 
     def list_responsables(self) -> List[str]:
         df = self._load_registro_for_normalizacion()
@@ -302,7 +359,7 @@ class RegistroService:
         df_resp = self.get_registros_por_responsable(responsable)
         if df_resp.empty:
             raise ValueError("No hay registros asignados a esta persona")
-        columns = [config.REGISTRO_ID_COLUMN, "Nombre_Usuario"]
+        columns = ["Nombre_Usuario"]
         ced_col = self._cedula_column(df_resp)
         if ced_col:
             columns.append(ced_col)
@@ -341,14 +398,14 @@ class RegistroService:
         updated = 0
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         target_name = (norm_str(responsable) or "").lower()
+        index_lookup = {str(idx): idx for idx in df.index}
         for item in updates:
             uid = norm_str(item.get("id") or item.get(id_col))
             if not uid:
                 continue
-            matches = df[df[id_col].astype(str) == uid].index
-            if matches.empty:
+            idx = index_lookup.get(uid)
+            if idx is None:
                 continue
-            idx = matches[0]
             assigned = (norm_str(df.at[idx, assignment_col]) or "").lower()
             if assigned != target_name:
                 continue
@@ -424,7 +481,7 @@ class RegistroService:
         )
         if df_resp.empty:
             raise ValueError("No hay registros de publicacion para descargar con este filtro")
-        columns = [config.REGISTRO_ID_COLUMN, "Nombre_Usuario"]
+        columns = ["Nombre_Usuario"]
         ced_col = self._cedula_column(df_resp)
         if ced_col:
             columns.append(ced_col)
@@ -452,22 +509,21 @@ class RegistroService:
         if target_clean not in allowed:
             raise ValueError("Responsable de publicacion no valido.")
         df_all, ready_df = self._load_registro_for_publicacion()
-        id_col = config.REGISTRO_ID_COLUMN
         assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
         state_col = config.PUBLICATION_STATUS_COLUMN
         pub_by_col = config.PUBLICATION_PUBLISHED_BY_COLUMN
         date_col = config.PUBLICATION_DATE_COLUMN
         obs_col = config.PUBLICATION_OBS_COLUMN
-        allowed_ids = set(ready_df[id_col].astype(str))
+        allowed_ids = {str(idx) for idx in ready_df.index}
+        index_lookup = {str(idx): idx for idx in df_all.index}
         normalized_ids = [norm_str(i) for i in ids if norm_str(i)]
         updated = 0
         for uid in normalized_ids:
             if uid not in allowed_ids:
                 continue
-            matches = df_all[df_all[id_col].astype(str) == uid].index
-            if matches.empty:
+            idx = index_lookup.get(uid)
+            if idx is None:
                 continue
-            idx = matches[0]
             df_all.at[idx, assignment_col] = target
             df_all.at[idx, state_col] = config.PUBLICATION_PENDING_VALUE
             df_all.at[idx, pub_by_col] = ""
@@ -502,26 +558,25 @@ class RegistroService:
 
     def update_publicacion_estado(self, responsable: str, updates: List[Dict]) -> Dict:
         df_all, ready_df = self._load_registro_for_publicacion()
-        id_col = config.REGISTRO_ID_COLUMN
         assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
         state_col = config.PUBLICATION_STATUS_COLUMN
         pub_by_col = config.PUBLICATION_PUBLISHED_BY_COLUMN
         date_col = config.PUBLICATION_DATE_COLUMN
         obs_col = config.PUBLICATION_OBS_COLUMN
         target_norm = (norm_str(responsable) or "").lower()
-        allowed = set(ready_df[id_col].astype(str))
+        allowed = {str(idx) for idx in ready_df.index}
+        index_lookup = {str(idx): idx for idx in df_all.index}
         updated = 0
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         done_value = config.PUBLICATION_DONE_VALUE
         pending_value = config.PUBLICATION_PENDING_VALUE
         for item in updates:
-            uid = norm_str(item.get("id") or item.get(id_col))
+            uid = norm_str(item.get("id"))
             if not uid or uid not in allowed:
                 continue
-            matches = df_all[df_all[id_col].astype(str) == uid].index
-            if matches.empty:
+            idx = index_lookup.get(uid)
+            if idx is None:
                 continue
-            idx = matches[0]
             assigned = (norm_str(df_all.at[idx, assignment_col]) or "").lower()
             if assigned != target_norm:
                 continue
@@ -555,3 +610,181 @@ class RegistroService:
         summary = self.summarize_publicacion(resumen)
         summary["updated"] = updated
         return summary
+
+    def build_dashboard_dataframe(self) -> pd.DataFrame:
+        df_all, _ = self._load_registro_for_publicacion()
+        df = df_all.copy()
+        for col in ["Fecha", config.NORMALIZATION_DATE_COLUMN, config.PUBLICATION_DATE_COLUMN]:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors="coerce")
+        return df
+
+    def filter_dashboard_dataframe(
+        self,
+        df: pd.DataFrame,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        responsables: Optional[List[str]] = None,
+        estados: Optional[List[str]] = None,
+    ) -> pd.DataFrame:
+        filtered = df.copy()
+        if start_date and "Fecha" in filtered.columns:
+            filtered = filtered[filtered["Fecha"] >= pd.Timestamp(start_date)]
+        if end_date and "Fecha" in filtered.columns:
+            filtered = filtered[filtered["Fecha"] <= pd.Timestamp(end_date)]
+        if responsables:
+            normalized_targets = {(norm_str(r) or "").lower() for r in responsables}
+            assignment_col = config.ASSIGNMENT_COLUMN
+            if assignment_col in filtered.columns:
+                filtered = filtered[
+                    filtered[assignment_col]
+                    .fillna("")
+                    .astype(str)
+                    .str.lower()
+                    .isin(normalized_targets)
+                ]
+        if estados:
+            status_col = config.PUBLICATION_STATUS_COLUMN
+            if status_col in filtered.columns:
+                estados_norm = {(norm_str(e) or "").lower() for e in estados}
+                filtered = filtered[
+                    filtered[status_col]
+                    .fillna("")
+                    .astype(str)
+                    .str.lower()
+                    .isin(estados_norm)
+                ]
+        return filtered
+
+    def calculate_dashboard_metrics(self, df: pd.DataFrame) -> Dict:
+        total = int(len(df))
+        norm_status_col = config.NORMALIZATION_STATUS_COLUMN
+        if norm_status_col in df.columns:
+            norm_status = df[norm_status_col].fillna("").astype(str).str.upper()
+        else:
+            norm_status = pd.Series([""] * len(df), index=df.index)
+        norm_ok = (config.NORMALIZATION_OK_VALUE or "OK").upper()
+        norm_ok_count = int((norm_status == norm_ok).sum())
+        pub_status_col = config.PUBLICATION_STATUS_COLUMN
+        if pub_status_col in df.columns:
+            pub_status = df[pub_status_col].fillna("").astype(str).str.upper()
+        else:
+            pub_status = pd.Series([""] * len(df), index=df.index)
+        pub_done = (config.PUBLICATION_DONE_VALUE or "PUBLICADO").upper()
+        pub_done_count = int((pub_status == pub_done).sum())
+        obs_col = config.NORMALIZATION_OBS_COLUMN
+        general_obs_col = "Observaciones"
+        obs_mask = pd.Series(False, index=df.index)
+        if obs_col in df.columns:
+            obs_mask |= df[obs_col].fillna("").astype(str).str.strip() != ""
+        if general_obs_col in df.columns:
+            obs_mask |= df[general_obs_col].fillna("").astype(str).str.strip() != ""
+        obs_total = int(obs_mask.sum())
+        general_metrics = {
+            "total": total,
+            "en_proceso": total - pub_done_count,
+            "normalizadas": norm_ok_count,
+            "con_observaciones": obs_total,
+            "publicadas": pub_done_count,
+            "avance": round((pub_done_count / total * 100) if total else 0, 2),
+        }
+        assignment_col = config.ASSIGNMENT_COLUMN
+        distributed = (
+            int(df[assignment_col].fillna("").astype(str).str.strip().ne("").sum())
+            if assignment_col in df.columns
+            else 0
+        )
+        pipeline = {
+            "registradas": total,
+            "distribuidas": distributed,
+            "en_normalizacion": int((norm_status != norm_ok).sum()),
+            "normalizadas": norm_ok_count,
+            "en_publicacion": int(((norm_status == norm_ok) & (pub_status != pub_done)).sum()),
+            "publicadas": pub_done_count,
+        }
+        reviewer_col = config.NORMALIZATION_REVIEWER_COLUMN
+        norm_productivity = {}
+        if reviewer_col in df.columns:
+            norm_productivity = (
+                df[df[reviewer_col].fillna("").astype(str).str.strip() != ""]
+                .groupby(reviewer_col)
+                .size()
+                .sort_values(ascending=False)
+                .to_dict()
+            )
+        publisher_col = config.PUBLICATION_PUBLISHED_BY_COLUMN
+        pub_productivity = {}
+        if publisher_col in df.columns:
+            pub_productivity = (
+                df[df[publisher_col].fillna("").astype(str).str.strip() != ""]
+                .groupby(publisher_col)
+                .size()
+                .sort_values(ascending=False)
+                .to_dict()
+            )
+        ranking = {}
+        for person, count in norm_productivity.items():
+            ranking[person] = ranking.get(person, 0) + int(count)
+        for person, count in pub_productivity.items():
+            ranking[person] = ranking.get(person, 0) + int(count)
+        ranking = dict(sorted(ranking.items(), key=lambda kv: kv[1], reverse=True))
+        quality = {
+            "observaciones": obs_total,
+            "observaciones_por_responsable": (
+                df[obs_mask]
+                .groupby(reviewer_col)[obs_col]
+                .count()
+                .sort_values(ascending=False)
+                .to_dict()
+                if reviewer_col in df.columns and obs_col in df.columns
+                else {}
+            ),
+            "retrabajos": int(((obs_mask) & (norm_status != norm_ok)).sum()),
+        }
+        time_metrics = {}
+        if "Fecha" in df.columns:
+            fecha = pd.to_datetime(df["Fecha"], errors="coerce")
+            if config.NORMALIZATION_DATE_COLUMN in df.columns:
+                t_norm = (pd.to_datetime(df[config.NORMALIZATION_DATE_COLUMN], errors="coerce") - fecha).dt.days.dropna()
+                if not t_norm.empty:
+                    time_metrics["registro_a_normalizacion"] = round(float(t_norm.mean()), 2)
+            if config.PUBLICATION_DATE_COLUMN in df.columns:
+                norm_date = pd.to_datetime(df.get(config.NORMALIZATION_DATE_COLUMN), errors="coerce")
+                t_pub = (pd.to_datetime(df[config.PUBLICATION_DATE_COLUMN], errors="coerce") - norm_date).dt.days.dropna()
+                if not t_pub.empty:
+                    time_metrics["normalizacion_a_publicacion"] = round(float(t_pub.mean()), 2)
+                t_total = (pd.to_datetime(df[config.PUBLICATION_DATE_COLUMN], errors="coerce") - fecha).dt.days.dropna()
+                if not t_total.empty:
+                    time_metrics["ciclo_total"] = round(float(t_total.mean()), 2)
+        workload = {}
+        if assignment_col in df.columns:
+            workload["pendientes_por_responsable"] = (
+                df[pub_status != pub_done]
+                .groupby(assignment_col)
+                .size()
+                .sort_values(ascending=False)
+                .to_dict()
+            )
+        workload["sin_asignar"] = (
+            int(df[assignment_col].fillna("").astype(str).str.strip().eq("").sum())
+            if assignment_col in df.columns
+            else 0
+        )
+        if "Fecha" in df.columns:
+            ageing_mask = (norm_status != norm_ok) & (
+                pd.Timestamp(datetime.utcnow()) - pd.to_datetime(df["Fecha"], errors="coerce")
+                > pd.Timedelta(days=30)
+            )
+            workload["bloqueadas"] = int(ageing_mask.sum())
+        else:
+            workload["bloqueadas"] = 0
+        return {
+            "general": general_metrics,
+            "pipeline": pipeline,
+            "productividad_normalizacion": norm_productivity,
+            "productividad_publicacion": pub_productivity,
+            "ranking": ranking,
+            "calidad": quality,
+            "tiempos": time_metrics,
+            "operativo": workload,
+        }

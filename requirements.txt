@@ -5,3 +5,5 @@ xlsxwriter>=3.2
 google-api-python-client>=2.190
 google-auth>=2.48
 google-auth-httplib2>=0.3
+plotly>=5.0.0
+ftfy>=6.3

@@ -1,10 +1,11 @@
-﻿"""Vistas principales usando Streamlit."""
+"""Vistas principales usando Streamlit."""
 
 from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Dict, List, Optional
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
@@ -25,6 +26,125 @@ PAZ_OPTIONS_WITH_PLACEHOLDER = [PLACEHOLDER_OPTION] + PAZ_OPTIONS
 PAZ_LABELS = {"EN PROCESO": "En proceso", "SI": "Sí", "NO": "No"}
 PAZ_LABELS_WITH_PLACEHOLDER = {PLACEHOLDER_OPTION: PLACEHOLDER_OPTION, **PAZ_LABELS}
 HIDDEN_COLUMNS = {"Asesor_Recursos_Académicos", "Nombre_Asesoría", "Asesor_Metodológico"}
+
+DASHBOARD_BG_COLOR = "#f4fbf5"
+DASHBOARD_TEXT_COLOR = "#0d1f17"
+DASHBOARD_GREEN_PALETTE = ["#186f65", "#2f8f83", "#48b19b", "#73d6b8", "#a3e6c9", "#d6f7e7"]
+BUTTON_STYLE_STATE_KEY = "_button_styles_applied"
+ADD_BUTTON_STYLE_STATE_KEY = "_add_student_button_style"
+
+
+def _style_dashboard_chart(chart):
+    return (
+        chart
+        .configure_title(color=DASHBOARD_TEXT_COLOR, fontSize=16, anchor="start")
+        .configure_axis(labelColor=DASHBOARD_TEXT_COLOR, titleColor=DASHBOARD_TEXT_COLOR, gridColor="#b7e4c7")
+        .configure_legend(labelColor=DASHBOARD_TEXT_COLOR, titleColor=DASHBOARD_TEXT_COLOR)
+        .configure_view(strokeWidth=0, fill=DASHBOARD_BG_COLOR)
+        .interactive()
+    )
+
+
+def _inject_button_styles() -> None:
+    if st.session_state.get(BUTTON_STYLE_STATE_KEY):
+        return
+    st.session_state[BUTTON_STYLE_STATE_KEY] = True
+    primary_bg = DASHBOARD_GREEN_PALETTE[0]
+    primary_hover = "#14594f"
+    secondary_border = DASHBOARD_GREEN_PALETTE[0]
+    st.markdown(
+        f"""
+<style>
+div[data-testid="baseButton-primary"] button {{
+    background-color: {primary_bg};
+    color: #ffffff;
+    border-radius: 999px;
+    border: 1px solid {primary_bg};
+    padding: 0.45rem 1.5rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}}
+div[data-testid="baseButton-primary"] button:hover {{
+    background-color: {primary_hover};
+    border-color: {primary_hover};
+}}
+div[data-testid="baseButton-secondary"] button {{
+    background-color: transparent;
+    color: {DASHBOARD_TEXT_COLOR};
+    border-radius: 999px;
+    border: 1px solid {secondary_border};
+    padding: 0.4rem 1.25rem;
+    font-weight: 500;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}}
+div[data-testid="baseButton-secondary"] button:hover {{
+    background-color: #e2f5ec;
+    border-color: {primary_bg};
+}}
+div[data-testid="baseButton-primary"] button:focus,
+div[data-testid="baseButton-secondary"] button:focus {{
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(24, 111, 101, 0.35);
+}}
+div[data-testid="baseButton-primary"] button:disabled,
+div[data-testid="baseButton-secondary"] button:disabled {{
+    opacity: 0.55;
+    cursor: not-allowed;
+}}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def _button(label: str, **kwargs):
+    _inject_button_styles()
+    clean_label = utils.fix_text_encoding(label, strip=True) or ""
+    return st.button(clean_label, **kwargs)
+
+
+def _inject_add_student_button_style() -> None:
+    if st.session_state.get(ADD_BUTTON_STYLE_STATE_KEY):
+        return
+    st.session_state[ADD_BUTTON_STYLE_STATE_KEY] = True
+    st.markdown(
+        """
+<style>
+div[data-testid="baseButton-secondary"][id*="btn_add_extra_student"] button {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0 !important;
+    font-size: 1.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.75rem;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def _download_label_for_responsable(responsable: Optional[str], *, show_all: bool = False, context: str) -> str:
+    clean_responsable = utils.fix_text_encoding(responsable, strip=True) if responsable else responsable
+    primary = utils.fix_text_encoding(config.PUBLICATION_PRIMARY, strip=True)
+    secondary = (
+        utils.fix_text_encoding(config.PUBLICATION_RESPONSIBLES[1], strip=True)
+        if len(config.PUBLICATION_RESPONSIBLES) > 1
+        else None
+    )
+    if context == "publicacion":
+        if show_all:
+            return "Descargar registros de todos"
+        if clean_responsable == primary:
+            return "Descargar registros"
+        if clean_responsable == secondary:
+            return "Descargar registros asignados"
+    if clean_responsable:
+        return f"Descargar registros de {clean_responsable}"
+    return "Descargar registros"
 
 
 def _streamlit_rerun() -> None:
@@ -198,7 +318,7 @@ def _autofill_by_cedula(
             }
         return
     row = df.loc[idx]
-    doc_value = _clean_str(row.get("Cédula") or row.get("CǸdula") or ced)
+    doc_value = _clean_str(row.get("Cédula") or row.get("C?dula") or ced)
     st.session_state[doc_key] = doc_value
     st.session_state[name_key] = _clean_str(row.get("Nombre_Usuario"))
     st.session_state["titulo"] = _clean_str(row.get("Título_Trabajo_Grado"))
@@ -279,6 +399,7 @@ def _render_tabs(service: RegistroService, meta: dict) -> None:
         "consult": "Consultar usuario",
         "normalizacion": "Normalización",
         "publicacion": "Publicación",
+        "dashboard": "Metricas",
     }
     query_params = st.query_params
     current_page = query_params.get("page", "register")
@@ -325,6 +446,8 @@ a.menu-link.active {
             _tab_normalizacion(content_col, service, meta)
         elif current == "publicacion":
             _tab_publicacion(content_col, service, meta)
+        elif current == "dashboard":
+            _tab_dashboard(content_col, service, meta)
 
 
 def _tab_registro(tab, service: RegistroService, meta: dict):
@@ -407,11 +530,12 @@ setTimeout(function(){{
             )
 
             st.caption("Estudiantes adicionales (opcional)")
-            btn_add_col, label_add_col = st.columns([0.1, 0.9])
+            btn_add_col, label_add_col = st.columns([0.15, 0.85])
             with btn_add_col:
-                st.button("➕", on_click=_add_extra_student, key="btn_add_extra_student", type="secondary")
+                _button("+", on_click=_add_extra_student, key="btn_add_extra_student", type="secondary")
+                _inject_add_student_button_style()
             with label_add_col:
-                st.caption("Agregar estudiante")
+                st.caption("Agregar estudiante adicional")
             extra_n = _extra_students_count()
             extra_inputs = []
             for i in range(extra_n):
@@ -438,7 +562,7 @@ setTimeout(function(){{
                         )
                         extra_inputs.append((extra_doc_input, extra_name_input, extra_email_input))
                     with col_actions:
-                        st.button(
+                        _button(
                             "Eliminar",
                             key=f"btn_remove_extra_{i}",
                             type="secondary",
@@ -578,7 +702,7 @@ setTimeout(function(){{
                 saving = st.session_state.get("saving", False)
                 if saving:
                     st.info("Guardando registro...")
-                if st.button("💾 Guardar registro", type="primary", disabled=saving):
+                if _button("Guardar registro", type="primary", disabled=saving):
                     first_doc = (primary_doc_raw or "").strip()
                     first_name = (primary_name_raw or "").strip()
                     first_email = (primary_email_raw or "").strip()
@@ -661,24 +785,7 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
         with search_cols[0]:
             q = st.text_input("Buscar por nombre o cédula", placeholder="Ej: Valentina o 1032331000", key="q_search")
         with search_cols[1]:
-            st.markdown(
-                """
-<style>
-div[data-testid="stButton"][id*="btn_search_trigger"] button {
-    background-color: transparent !important;
-    border: none !important;
-    color: #f1f5f9 !important;
-    font-size: 1.5rem !important;
-    padding: 0.1rem 0 !important;
-}
-div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
-    color: #c8f560 !important;
-}
-</style>
-""",
-                unsafe_allow_html=True,
-            )
-            if st.button("🔍", key="btn_search_trigger", help="Ejecutar búsqueda"):
+            if _button("Buscar", key="btn_search_trigger", help="Ejecutar búsqueda", type="primary"):
                 _streamlit_rerun()
         q = q.strip()
         if q:
@@ -698,7 +805,7 @@ div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
         with modify_cols[0]:
             st.markdown(" ")
         with modify_cols[1]:
-            if st.button("Modificar registro", key="btn_consulta_modify", disabled=len(filtered) != 1):
+            if _button("Modificar registro", key="btn_consulta_modify", disabled=len(filtered) != 1, type="secondary"):
                 if len(filtered) == 1:
                     selected_idx = int(filtered.index[0])
                     row = df_latest.loc[selected_idx]
@@ -737,7 +844,7 @@ div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
             st.session_state["inline_edit_data"] = edited_df.iloc[0].to_dict()
             action_cols = st.columns([0.25, 0.25, 0.5])
             with action_cols[0]:
-                if st.button("💾 Guardar cambios", key="btn_inline_save"):
+                if _button("Guardar cambios", key="btn_inline_save", type="primary"):
                     df_all = service.load_registro()
                     df_all.loc[inline_idx] = edited_df.iloc[0]
                     service.save_registro(df_all)
@@ -747,7 +854,7 @@ div[data-testid="stButton"][id*="btn_search_trigger"] button:hover {
                     st.session_state["reset_pending"] = True
                     _streamlit_rerun()
             with action_cols[1]:
-                if st.button("Cancelar edición", key="btn_inline_cancel"):
+                if _button("Cancelar edición", key="btn_inline_cancel", type="secondary"):
                     st.session_state.pop("inline_edit_idx", None)
                     st.session_state.pop("inline_edit_data", None)
                     _streamlit_rerun()
@@ -799,6 +906,7 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
         with col_center:
             st.subheader("Normalización")
             st.markdown('<h3 style="font-size:1.2rem; margin-bottom:0.5rem;">Distribuir registros existentes</h3>', unsafe_allow_html=True)
+            st.caption("La distribución se realiza por tesis; todos los estudiantes de una tesis quedan con la misma asignación.")
             default_people = getattr(config, "DEFAULT_ASSIGNMENT_PEOPLE", [])
             default_text = "\n".join(default_people)
             responsables_text = st.text_area(
@@ -806,7 +914,7 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                 value=default_text,
                 key="assignment_people_text",
             )
-            distribute = st.button("Distribuir registros", type="primary")
+            distribute = _button("Distribuir registros", type="primary")
             if distribute:
                 responsables = [line.strip() for line in responsables_text.splitlines() if line.strip()]
                 with st.spinner("Distribuyendo registros existentes..."):
@@ -815,15 +923,25 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                     except Exception as exc:  # pragma: no cover - Streamlit feedback
                         st.error(f"No se pudo completar la distribución: {exc}")
                     else:
-                        st.success(
-                            f"Distribución completada. Registros asignados: {result['total_valid']}. "
-                            f"Columna utilizada: {result['assignment_column']}."
+                        st.success("Distribución completada por tesis.")
+                        st.info(
+                            f"Tesis distribuidas: **{result.get('total_thesis', 0)}** · Estudiantes impactados: **{result.get('total_students', 0)}**"
                         )
+                        st.caption(
+                            f"Columna de asignación: {result.get('assignment_column')} · Columna de tesis: {result.get('thesis_column')}"
+                        )
+                        thesis_without = result.get("thesis_without_title", 0)
+                        if thesis_without:
+                            st.warning(
+                                f"{thesis_without} tesis no tenían título registrado y se asignaron individualmente. Revísalas desde la pestaña Consultar usuario."
+                            )
                         st.markdown("#### Resumen por persona")
                         summary_cols = st.columns(2)
-                        for idx, (persona, cantidad) in enumerate(result["counts"].items()):
+                        for idx, (persona, data) in enumerate(result["counts"].items()):
+                            tesis = data.get("tesis", 0)
+                            estudiantes = data.get("estudiantes", 0)
                             with summary_cols[idx % 2]:
-                                st.metric(persona, cantidad)
+                                st.metric(persona, f"{tesis} tesis", f"{estudiantes} estudiantes")
                         ignored = result.get("ignored_rows", 0)
                         if ignored:
                             st.warning(
@@ -864,7 +982,7 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                             else:
                                 safe_name = responsable.lower().replace(" ", "_")
                                 st.download_button(
-                                    f"Descargar registros de {responsable}",
+                                    _download_label_for_responsable(responsable, context="normalizacion"),
                                     data=download_payload,
                                     file_name=f"normalizacion_{safe_name}.xlsx",
                                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -872,7 +990,6 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
 
                             status_col = config.NORMALIZATION_STATUS_COLUMN
                             obs_col = config.NORMALIZATION_OBS_COLUMN
-                            id_col = config.REGISTRO_ID_COLUMN
                             ced_col = None
                             for candidate in ("C\u01f8dula", "C\u00e9dula", "C?dula", "Cedula"):
                                 if candidate in asignados_df.columns:
@@ -884,11 +1001,17 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                                 else [""] * len(asignados_df)
                             )
                             ok_value = (config.NORMALIZATION_OK_VALUE or "OK").upper()
+                            programa_col = "Nombre_Programa" if "Nombre_Programa" in asignados_df.columns else None
+                            thesis_source_col = RegistroService._tesis_column(asignados_df)
+                            thesis_col = thesis_source_col or getattr(config, "THESIS_PRIMARY_COLUMN", "Título_Trabajo_Grado")
+                            row_ids = asignados_df.index.astype(str)
                             edit_source = pd.DataFrame(
                                 {
-                                    "ID": asignados_df[id_col].astype(str),
+                                    "ID": row_ids,
                                     "Nombre": asignados_df.get("Nombre_Usuario", ""),
                                     "Cedula": ced_values,
+                                    "Programa": asignados_df.get(programa_col, "") if programa_col else "",
+                                    "Tesis": asignados_df.get(thesis_col, "") if thesis_col in asignados_df.columns else "",
                                     "Revisado": asignados_df[status_col]
                                     .fillna("")
                                     .astype(str)
@@ -901,6 +1024,8 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                             column_config = {
                                 "Nombre": st.column_config.TextColumn("Nombre de estudiante", disabled=True),
                                 "Cedula": st.column_config.TextColumn("Cédula", disabled=True),
+                                "Programa": st.column_config.TextColumn("Programa académico", disabled=True),
+                                "Tesis": st.column_config.TextColumn("Trabajo de grado / tesis", disabled=True),
                                 "Revisado": st.column_config.CheckboxColumn("Estado OK"),
                                 "Observacion": st.column_config.TextColumn("Observación de normalización"),
                             }
@@ -910,7 +1035,7 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                                 column_config=column_config,
                                 key=f"editor_normalizacion_{responsable}",
                             )
-                            if st.button("Guardar avances", key=f"btn_save_normalizacion_{responsable}"):
+                            if _button("Guardar avances", key=f"btn_save_normalizacion_{responsable}", type="primary"):
                                 updates = []
                                 for idx_row, row in edited_df.iterrows():
                                     updates.append(
@@ -989,12 +1114,11 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
         else:
             safe_name = (responsable.lower().replace(" ", "_")) if not show_all else "todos"
             st.download_button(
-                f"Descargar registros de {responsable if not show_all else 'todos'}",
+                _download_label_for_responsable(responsable if not show_all else "todos", show_all=show_all, context="publicacion"),
                 data=download_payload,
                 file_name=f"publicacion_{safe_name}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
-        id_col = config.REGISTRO_ID_COLUMN
         assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
         state_col = config.PUBLICATION_STATUS_COLUMN
         obs_col = config.PUBLICATION_OBS_COLUMN
@@ -1003,9 +1127,10 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
             df_responsable[ced_col].astype(str) if ced_col else [""] * len(df_responsable)
         )
         done_value = (config.PUBLICATION_DONE_VALUE or "Publicado").upper()
+        row_ids = df_responsable.index.astype(str)
         edit_source = pd.DataFrame(
             {
-                "ID": df_responsable[id_col].astype(str),
+                "ID": row_ids,
                 "Nombre": df_responsable.get("Nombre_Usuario", ""),
                 "Cedula": ced_values,
                 "Asignado": df_responsable.get(assignment_col, ""),
@@ -1027,7 +1152,7 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
             column_config=column_config,
             key=f"editor_publicacion_{responsable}",
         )
-        if st.button("Guardar publicación", key=f"btn_save_publicacion_{responsable}"):
+        if _button("Guardar publicación", key=f"btn_save_publicacion_{responsable}", type="primary"):
             updates = [
                 {
                     "id": idx,
@@ -1064,7 +1189,7 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
                 for _, row in pending_gloria.iterrows():
                     label = row.get("Nombre_Usuario", "Sin nombre")
                     ced_val = row.get(ced_col_pending, "") if ced_col_pending else ""
-                    uid = str(row[id_col])
+                    uid = str(row.name)
                     text = f"{label} ({ced_val}) - {uid}"
                     options.append(text)
                     display_to_id[text] = uid
@@ -1073,7 +1198,7 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
                     options=options,
                     key="publicacion_assign_list",
                 )
-                if st.button("Asignar a Diana", key="btn_assign_publicacion"):
+                if _button("Asignar a Diana", key="btn_assign_publicacion", type="primary"):
                     ids_to_assign = [display_to_id[label] for label in seleccion]
                     if not ids_to_assign:
                         st.warning("Selecciona al menos un registro para reasignar.")
@@ -1090,6 +1215,177 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
                                 _streamlit_rerun()
 
 
+def _tab_dashboard(tab, service: RegistroService, meta: dict) -> None:
+    with tab:
+        df_base = service.build_dashboard_dataframe()
+        if df_base.empty:
+            st.info('No hay datos suficientes para mostrar métricas.')
+            return
+
+        min_date = df_base['Fecha'].min().date() if 'Fecha' in df_base.columns else None
+        max_date = df_base['Fecha'].max().date() if 'Fecha' in df_base.columns else None
+        default_range = (min_date, max_date) if min_date and max_date else (None, None)
+        date_filter = st.date_input(
+            'Rango de fechas (según la fecha de registro)',
+            value=default_range if all(default_range) else None,
+        )
+        responsables_opts = sorted(
+            {utils.norm_str(val) or '' for val in df_base.get(config.ASSIGNMENT_COLUMN, pd.Series()).tolist() if val}
+        )
+        responsables_sel = st.multiselect('Responsables (registro / normalización)', options=responsables_opts)
+        status_opts = sorted(
+            {utils.norm_str(val) or '' for val in df_base.get(config.PUBLICATION_STATUS_COLUMN, pd.Series()).tolist() if val}
+        )
+        status_sel = st.multiselect('Estado de publicación', options=status_opts)
+        start_date = date_filter[0] if isinstance(date_filter, tuple) and len(date_filter) == 2 else None
+        end_date = date_filter[1] if isinstance(date_filter, tuple) and len(date_filter) == 2 else None
+        df_filtered = service.filter_dashboard_dataframe(
+            df_base,
+            start_date=start_date,
+            end_date=end_date,
+            responsables=responsables_sel or None,
+            estados=status_sel or None,
+        )
+
+        metrics = service.calculate_dashboard_metrics(df_filtered)
+        general = metrics['general']
+        kpi_cols = st.columns(5)
+        kpi_cols[0].metric('Total registradas', general['total'])
+        kpi_cols[1].metric('En proceso', general['en_proceso'])
+        kpi_cols[2].metric('Normalizadas', general['normalizadas'])
+        kpi_cols[3].metric('Con observaciones', general['con_observaciones'])
+        kpi_cols[4].metric('Publicadas', general['publicadas'], f"{general['avance']}% avance")
+
+        st.subheader('Pipeline del proceso')
+        pipeline = metrics['pipeline']
+        pipeline_df = pd.DataFrame({'Etapa': list(pipeline.keys()), 'Cantidad': list(pipeline.values())})
+        stage_order = list(pipeline.keys())
+        palette = [DASHBOARD_GREEN_PALETTE[i % len(DASHBOARD_GREEN_PALETTE)] for i in range(len(stage_order))]
+        base_chart = (
+            alt.Chart(pipeline_df)
+            .mark_bar(cornerRadiusEnd=6)
+            .encode(
+                x=alt.X('Cantidad:Q', title='Cantidad'),
+                y=alt.Y('Etapa:N', sort=stage_order, title='Etapa'),
+                color=alt.Color('Etapa:N', scale=alt.Scale(range=palette), legend=None),
+                tooltip=['Etapa', 'Cantidad'],
+            )
+        )
+        labels_chart = (
+            alt.Chart(pipeline_df)
+            .mark_text(dx=5, color='#083024', fontWeight='bold')
+            .encode(x='Cantidad:Q', y=alt.Y('Etapa:N', sort=stage_order), text='Cantidad:Q')
+        )
+        st.altair_chart(
+            _style_dashboard_chart((base_chart + labels_chart).properties(title='Pipeline del proceso')),
+            use_container_width=True,
+        )
+
+        st.subheader('Productividad por responsable')
+        prod_cols = st.columns(2)
+        if metrics['productividad_normalizacion']:
+            prod_norm_df = pd.DataFrame(
+                {
+                    'Responsable': list(metrics['productividad_normalizacion'].keys()),
+                    'Cantidad': list(metrics['productividad_normalizacion'].values()),
+                }
+            )
+            chart_norm = (
+                alt.Chart(prod_norm_df)
+                .mark_bar(color='#186f65', cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+                .encode(
+                    x=alt.X('Responsable:N', sort='-y', title='Responsable', axis=alt.Axis(labelAngle=-20)),
+                    y=alt.Y('Cantidad:Q', title='Tesis normalizadas'),
+                    tooltip=['Responsable', 'Cantidad'],
+                )
+            )
+            labels_norm = (
+                alt.Chart(prod_norm_df)
+                .mark_text(dy=-6, color='#0b3328', fontWeight='bold')
+                .encode(x=alt.X('Responsable:N', sort='-y'), y='Cantidad:Q', text='Cantidad:Q')
+            )
+            prod_cols[0].altair_chart(
+                _style_dashboard_chart((chart_norm + labels_norm).properties(title='Normalización')),
+                use_container_width=True,
+            )
+        else:
+            prod_cols[0].info('Sin registros de normalización en este filtro.')
+
+        if metrics['productividad_publicacion']:
+            prod_pub_df = pd.DataFrame(
+                {
+                    'Responsable': list(metrics['productividad_publicacion'].keys()),
+                    'Cantidad': list(metrics['productividad_publicacion'].values()),
+                }
+            )
+            chart_pub = (
+                alt.Chart(prod_pub_df)
+                .mark_bar(color='#63c6a3', cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+                .encode(
+                    x=alt.X('Responsable:N', sort='-y', title='Responsable', axis=alt.Axis(labelAngle=-20)),
+                    y=alt.Y('Cantidad:Q', title='Tesis publicadas'),
+                    tooltip=['Responsable', 'Cantidad'],
+                )
+            )
+            labels_pub = (
+                alt.Chart(prod_pub_df)
+                .mark_text(dy=-6, color='#0b3328', fontWeight='bold')
+                .encode(x=alt.X('Responsable:N', sort='-y'), y='Cantidad:Q', text='Cantidad:Q')
+            )
+            prod_cols[1].altair_chart(
+                _style_dashboard_chart((chart_pub + labels_pub).properties(title='Publicación')),
+                use_container_width=True,
+            )
+        else:
+            prod_cols[1].info('Sin registros de publicación en este filtro.')
+
+        st.subheader('Calidad y observaciones')
+        quality = metrics['calidad']
+        quality_cols = st.columns(3)
+        quality_cols[0].metric('Total observaciones', quality['observaciones'])
+        quality_cols[1].metric('Retrabajos detectados', quality['retrabajos'])
+        if quality['observaciones_por_responsable']:
+            obs_df = pd.DataFrame(
+                {
+                    'Responsable': list(quality['observaciones_por_responsable'].keys()),
+                    'Observaciones': list(quality['observaciones_por_responsable'].values()),
+                }
+            )
+            pie_chart = (
+                alt.Chart(obs_df)
+                .mark_arc(innerRadius=50, stroke='#0f2a24', strokeWidth=1)
+                .encode(
+                    theta=alt.Theta(field='Observaciones', type='quantitative'),
+                    color=alt.Color(
+                        field='Responsable',
+                        type='nominal',
+                        scale=alt.Scale(range=['#186f65', '#48b19b', '#73d6b8', '#a3e6c9']),
+                        legend=alt.Legend(title='Responsable'),
+                    ),
+                    tooltip=['Responsable', 'Observaciones'],
+                )
+            )
+            pie_labels = (
+                alt.Chart(obs_df)
+                .mark_text(color='#083024', fontWeight='bold')
+                .encode(theta=alt.Theta(field='Observaciones', type='quantitative'), text='Observaciones:Q', radius=alt.value(90))
+            )
+            st.altair_chart(
+                _style_dashboard_chart((pie_chart + pie_labels).properties(title='Observaciones por responsable')),
+                use_container_width=True,
+            )
+        else:
+            quality_cols[2].info('Sin observaciones registradas en este rango.')
+
+        st.subheader('Estado operativo')
+        pipeline_cards = st.columns(3)
+        pipeline_cards[0].metric('En normalización', pipeline.get('en_normalizacion', 0))
+        pipeline_cards[1].metric('En publicación', pipeline.get('en_publicacion', 0))
+        pipeline_cards[2].metric('Registros distribuidos', pipeline.get('distribuidas', 0))
+        workload = metrics['operativo']
+        workload_cards = st.columns(2)
+        workload_cards[0].metric('Tesis sin asignar', workload.get('sin_asignar', 0))
+        workload_cards[1].metric('Tesis bloqueadas', workload.get('bloqueadas', 0))
 def render_app():
     load_theme()
     service = RegistroService()
@@ -1100,3 +1396,5 @@ def render_app():
         return
     meta = service.load_lists()
     _render_tabs(service, meta)
+
+

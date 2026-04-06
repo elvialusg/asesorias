@@ -36,6 +36,18 @@ GOOGLE_SHEETS_SCOPES = [
 ]
 
 ASSIGNMENT_COLUMN = "Asignado_a"
+THESIS_PRIMARY_COLUMN = "Título_Trabajo_Grado"
+THESIS_COLUMN_CANDIDATES = [
+    "Título_Trabajo_Grado",
+    "Titulo_Trabajo_Grado",
+    "Título trabajo de grado",
+    "Titulo trabajo de grado",
+    "Nombre_Tesis",
+    "Nombre de tesis",
+    "Proyecto",
+    "Tesis",
+]
+THESIS_COLUMN_KEYWORDS = ["tesis", "título", "titulo", "proyecto"]
 DEFAULT_ASSIGNMENT_PEOPLE = [
     "Harold Estiven Garía",
     "Luz Andrea Sepúlveda",
@@ -64,7 +76,6 @@ PUBLICATION_PENDING_VALUE = "Pendiente"
 PUBLICATION_DONE_VALUE = "Publicado"
 
 REGISTRO_COLUMNS = [
-
     "Cédula",
     "Nombre_Usuario",
     "Correo_Electronico",
@@ -83,7 +94,6 @@ REGISTRO_COLUMNS = [
     "Aprobación_Similitud",
     "Paz_y_Salvo",
     ASSIGNMENT_COLUMN,
-    REGISTRO_ID_COLUMN,
     NORMALIZATION_STATUS_COLUMN,
     NORMALIZATION_REVIEWER_COLUMN,
     NORMALIZATION_DATE_COLUMN,
