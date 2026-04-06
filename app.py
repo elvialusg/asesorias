@@ -11,7 +11,7 @@ import streamlit as st
 from asesorias_app import config
 from asesorias_app.ui.app_shell import render_app
 
-st.set_page_config(page_title="Tablero Asesorías (Tesis)", layout="wide")
+st.set_page_config(page_title="TesisFlow", layout="wide")
 
 
 def configure_google_credentials() -> None:
