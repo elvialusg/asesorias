@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Dict, List, Optional
+import io
 
 import altair as alt
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -1224,28 +1226,48 @@ def _tab_dashboard(tab, service: RegistroService, meta: dict) -> None:
 
         min_date = df_base['Fecha'].min().date() if 'Fecha' in df_base.columns else None
         max_date = df_base['Fecha'].max().date() if 'Fecha' in df_base.columns else None
-        default_range = (min_date, max_date) if min_date and max_date else (None, None)
+        default_range = (min_date, max_date) if (min_date and max_date) else None
+        st.markdown("### Filtros")
         date_filter = st.date_input(
             'Rango de fechas (según la fecha de registro)',
-            value=default_range if all(default_range) else None,
+            value=default_range if default_range else None,
+            help='Selecciona la fecha de inicio y fin para limitar los registros analizados.',
+            key='dashboard_date_range',
         )
+        filter_cols = st.columns(2)
         responsables_opts = sorted(
             {utils.norm_str(val) or '' for val in df_base.get(config.ASSIGNMENT_COLUMN, pd.Series()).tolist() if val}
         )
-        responsables_sel = st.multiselect('Responsables (registro / normalización)', options=responsables_opts)
-        status_opts = sorted(
-            {utils.norm_str(val) or '' for val in df_base.get(config.PUBLICATION_STATUS_COLUMN, pd.Series()).tolist() if val}
-        )
-        status_sel = st.multiselect('Estado de publicación', options=status_opts)
+        with filter_cols[0]:
+            responsables_sel = st.multiselect(
+                'Responsable asignado',
+                options=responsables_opts,
+                help='Filtra por la persona encargada de la tesis.',
+            )
+        stage_options = ['Registradas', 'En proceso', 'Normalizadas', 'Con observaciones', 'Publicadas']
+        with filter_cols[1]:
+            stage_sel = st.multiselect(
+                'Estado del proceso',
+                options=stage_options,
+                help='Selecciona una o varias etapas para enfocar las métricas.',
+            )
         start_date = date_filter[0] if isinstance(date_filter, tuple) and len(date_filter) == 2 else None
         end_date = date_filter[1] if isinstance(date_filter, tuple) and len(date_filter) == 2 else None
-        df_filtered = service.filter_dashboard_dataframe(
+        df_filtered_base = service.filter_dashboard_dataframe(
             df_base,
             start_date=start_date,
             end_date=end_date,
             responsables=responsables_sel or None,
-            estados=status_sel or None,
         )
+        df_filtered = df_filtered_base.copy()
+        if stage_sel and not df_filtered_base.empty:
+            stage_masks = service.dashboard_stage_masks(df_filtered_base)
+            combined_mask = pd.Series(False, index=df_filtered_base.index, dtype=bool)
+            for stage in stage_sel:
+                mask = stage_masks.get(stage)
+                if mask is not None:
+                    combined_mask |= mask
+            df_filtered = df_filtered_base.loc[combined_mask]
 
         metrics = service.calculate_dashboard_metrics(df_filtered)
         general = metrics['general']
@@ -1256,145 +1278,80 @@ def _tab_dashboard(tab, service: RegistroService, meta: dict) -> None:
         kpi_cols[3].metric('Con observaciones', general['con_observaciones'])
         kpi_cols[4].metric('Publicadas', general['publicadas'], f"{general['avance']}% avance")
 
-        st.subheader('Pipeline del proceso')
-        pipeline = metrics['pipeline']
-        pipeline_df = pd.DataFrame({'Etapa': list(pipeline.keys()), 'Cantidad': list(pipeline.values())})
-        stage_order = list(pipeline.keys())
-        palette = [DASHBOARD_GREEN_PALETTE[i % len(DASHBOARD_GREEN_PALETTE)] for i in range(len(stage_order))]
-        base_chart = (
-            alt.Chart(pipeline_df)
-            .mark_bar(cornerRadiusEnd=6)
-            .encode(
-                x=alt.X('Cantidad:Q', title='Cantidad'),
-                y=alt.Y('Etapa:N', sort=stage_order, title='Etapa'),
-                color=alt.Color('Etapa:N', scale=alt.Scale(range=palette), legend=None),
-                tooltip=['Etapa', 'Cantidad'],
-            )
-        )
-        labels_chart = (
-            alt.Chart(pipeline_df)
-            .mark_text(dx=5, color='#083024', fontWeight='bold')
-            .encode(x='Cantidad:Q', y=alt.Y('Etapa:N', sort=stage_order), text='Cantidad:Q')
-        )
-        st.altair_chart(
-            _style_dashboard_chart((base_chart + labels_chart).properties(title='Pipeline del proceso')),
-            use_container_width=True,
-        )
-
-        st.subheader('Productividad por responsable')
-        prod_cols = st.columns(2)
-        if metrics['productividad_normalizacion']:
-            prod_norm_df = pd.DataFrame(
-                {
-                    'Responsable': list(metrics['productividad_normalizacion'].keys()),
-                    'Cantidad': list(metrics['productividad_normalizacion'].values()),
-                }
-            )
-            chart_norm = (
-                alt.Chart(prod_norm_df)
-                .mark_bar(color='#186f65', cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
-                .encode(
-                    x=alt.X('Responsable:N', sort='-y', title='Responsable', axis=alt.Axis(labelAngle=-20)),
-                    y=alt.Y('Cantidad:Q', title='Tesis normalizadas'),
-                    tooltip=['Responsable', 'Cantidad'],
+        st.subheader('Distribución por etapa')
+        stage_data = [
+            ('Registradas', general['total']),
+            ('En proceso', general['en_proceso']),
+            ('Normalizadas', general['normalizadas']),
+            ('Con observaciones', general['con_observaciones']),
+            ('Publicadas', general['publicadas']),
+        ]
+        stage_df = pd.DataFrame(stage_data, columns=['Etapa', 'Cantidad'])
+        stage_df['Etiqueta'] = stage_df['Cantidad'].apply(lambda v: '' if v == 0 else str(v))
+        colors = ['#186f65', '#2f8f83', '#48b19b', '#a3e6c9', '#94a3b8']
+        fig = go.Figure(
+            data=[
+                go.Bar(
+                    x=stage_df['Etapa'],
+                    y=stage_df['Cantidad'],
+                    marker_color=colors[: len(stage_df)],
+                    text=stage_df['Etiqueta'],
+                    textposition='outside',
+                    hovertemplate='<b>%{x}</b><br>Cantidad: %{y}<extra></extra>',
                 )
-            )
-            labels_norm = (
-                alt.Chart(prod_norm_df)
-                .mark_text(dy=-6, color='#0b3328', fontWeight='bold')
-                .encode(x=alt.X('Responsable:N', sort='-y'), y='Cantidad:Q', text='Cantidad:Q')
-            )
-            prod_cols[0].altair_chart(
-                _style_dashboard_chart((chart_norm + labels_norm).properties(title='Normalización')),
-                use_container_width=True,
-            )
-        else:
-            prod_cols[0].info('Sin registros de normalización en este filtro.')
+            ]
+        )
+        fig.update_layout(
+            template='simple_white',
+            xaxis_title='Etapa del proceso',
+            yaxis_title='Cantidad de tesis',
+            uniformtext_minsize=10,
+            uniformtext_mode='show',
+            margin=dict(t=60, b=40, l=40, r=20),
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-        if metrics['productividad_publicacion']:
-            prod_pub_df = pd.DataFrame(
-                {
-                    'Responsable': list(metrics['productividad_publicacion'].keys()),
-                    'Cantidad': list(metrics['productividad_publicacion'].values()),
-                }
-            )
-            chart_pub = (
-                alt.Chart(prod_pub_df)
-                .mark_bar(color='#63c6a3', cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
-                .encode(
-                    x=alt.X('Responsable:N', sort='-y', title='Responsable', axis=alt.Axis(labelAngle=-20)),
-                    y=alt.Y('Cantidad:Q', title='Tesis publicadas'),
-                    tooltip=['Responsable', 'Cantidad'],
-                )
-            )
-            labels_pub = (
-                alt.Chart(prod_pub_df)
-                .mark_text(dy=-6, color='#0b3328', fontWeight='bold')
-                .encode(x=alt.X('Responsable:N', sort='-y'), y='Cantidad:Q', text='Cantidad:Q')
-            )
-            prod_cols[1].altair_chart(
-                _style_dashboard_chart((chart_pub + labels_pub).properties(title='Publicación')),
-                use_container_width=True,
-            )
-        else:
-            prod_cols[1].info('Sin registros de publicación en este filtro.')
+        st.subheader('Descarga de métricas')
+        export_df = df_filtered.copy()
+        summary_rows = [
+            {'Indicador': 'Total registradas', 'Valor': general['total']},
+            {'Indicador': 'En proceso', 'Valor': general['en_proceso']},
+            {'Indicador': 'Normalizadas', 'Valor': general['normalizadas']},
+            {'Indicador': 'Con observaciones', 'Valor': general['con_observaciones']},
+            {'Indicador': 'Publicadas', 'Valor': general['publicadas']},
+        ]
+        summary_df = pd.DataFrame(summary_rows)
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+            export_df.to_excel(writer, index=False, sheet_name='Datos')
+            summary_df.to_excel(writer, index=False, sheet_name='Resumen')
+        excel_buffer.seek(0)
+        csv_data = export_df.to_csv(index=False).encode('utf-8-sig')
+        download_cols = st.columns(2)
+        download_cols[0].download_button(
+            'Descargar Excel',
+            data=excel_buffer.getvalue(),
+            file_name='metricas_tesis.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        download_cols[1].download_button(
+            'Descargar CSV',
+            data=csv_data,
+            file_name='metricas_tesis.csv',
+            mime='text/csv',
+        )
 
-        st.subheader('Calidad y observaciones')
-        quality = metrics['calidad']
-        quality_cols = st.columns(3)
-        quality_cols[0].metric('Total observaciones', quality['observaciones'])
-        quality_cols[1].metric('Retrabajos detectados', quality['retrabajos'])
-        if quality['observaciones_por_responsable']:
-            obs_df = pd.DataFrame(
-                {
-                    'Responsable': list(quality['observaciones_por_responsable'].keys()),
-                    'Observaciones': list(quality['observaciones_por_responsable'].values()),
-                }
-            )
-            pie_chart = (
-                alt.Chart(obs_df)
-                .mark_arc(innerRadius=50, stroke='#0f2a24', strokeWidth=1)
-                .encode(
-                    theta=alt.Theta(field='Observaciones', type='quantitative'),
-                    color=alt.Color(
-                        field='Responsable',
-                        type='nominal',
-                        scale=alt.Scale(range=['#186f65', '#48b19b', '#73d6b8', '#a3e6c9']),
-                        legend=alt.Legend(title='Responsable'),
-                    ),
-                    tooltip=['Responsable', 'Observaciones'],
-                )
-            )
-            pie_labels = (
-                alt.Chart(obs_df)
-                .mark_text(color='#083024', fontWeight='bold')
-                .encode(theta=alt.Theta(field='Observaciones', type='quantitative'), text='Observaciones:Q', radius=alt.value(90))
-            )
-            st.altair_chart(
-                _style_dashboard_chart((pie_chart + pie_labels).properties(title='Observaciones por responsable')),
-                use_container_width=True,
-            )
-        else:
-            quality_cols[2].info('Sin observaciones registradas en este rango.')
 
-        st.subheader('Estado operativo')
-        pipeline_cards = st.columns(3)
-        pipeline_cards[0].metric('En normalización', pipeline.get('en_normalizacion', 0))
-        pipeline_cards[1].metric('En publicación', pipeline.get('en_publicacion', 0))
-        pipeline_cards[2].metric('Registros distribuidos', pipeline.get('distribuidas', 0))
-        workload = metrics['operativo']
-        workload_cards = st.columns(2)
-        workload_cards[0].metric('Tesis sin asignar', workload.get('sin_asignar', 0))
-        workload_cards[1].metric('Tesis bloqueadas', workload.get('bloqueadas', 0))
-def render_app():
-    load_theme()
+def render_app() -> None:
     service = RegistroService()
     if not TEMPLATE_PATH.exists():
         st.error(
             f"No encuentro el template en: {TEMPLATE_PATH}\n\nDebe existir: data/Control_Asesorias_Tesis_template.xlsm"
         )
         return
-    meta = service.load_lists()
+    try:
+        meta = service.load_lists()
+    except Exception as exc:
+        st.error(f"No se pudieron cargar las listas de apoyo: {exc}")
+        return
     _render_tabs(service, meta)
-
-

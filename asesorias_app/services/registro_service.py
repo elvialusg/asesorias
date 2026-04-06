@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 from asesorias_app import config
-from asesorias_app.core.utils import norm_str, normalize_fac_name
+from asesorias_app.core.utils import fix_text_encoding, norm_str, normalize_fac_name
 from asesorias_app.repositories.excel_repository import ExcelRepository, normalize_registro_df
 from asesorias_app.repositories.google_sheets_repository import GoogleSheetsRepository
 
@@ -131,9 +131,13 @@ class RegistroService:
     @staticmethod
     def _is_valid_registro(row) -> bool:
         doc_value = None
-        for key in ("CǸdula", "Cédula", "C�dula", "C?dula", "Cedula"):
-            if key in row:
-                doc_value = row.get(key)
+        normalized_row = {
+            (fix_text_encoding(col, strip=True) or "").lower(): value for col, value in row.items()
+        }
+        for key in ("CǸdula", "Cédula", "C?dula", "Cedula"):
+            normalized_key = (fix_text_encoding(key, strip=True) or "").lower()
+            if normalized_key in normalized_row:
+                doc_value = normalized_row[normalized_key]
                 if doc_value:
                     break
         doc = norm_str(doc_value)
@@ -232,9 +236,14 @@ class RegistroService:
 
     @staticmethod
     def _cedula_column(df: pd.DataFrame) -> Optional[str]:
+        normalized_columns = {
+            (fix_text_encoding(col, strip=True) or "").lower(): col for col in df.columns
+        }
         for candidate in ("CǸdula", "Cédula", "C?dula", "Cedula"):
-            if candidate in df.columns:
-                return candidate
+            normalized_candidate = (fix_text_encoding(candidate, strip=True) or "").lower()
+            match = normalized_columns.get(normalized_candidate)
+            if match:
+                return match
         return None
 
     @staticmethod
@@ -656,29 +665,35 @@ class RegistroService:
                 ]
         return filtered
 
-    def calculate_dashboard_metrics(self, df: pd.DataFrame) -> Dict:
-        total = int(len(df))
+    def _dashboard_vectors(self, df: pd.DataFrame):
         norm_status_col = config.NORMALIZATION_STATUS_COLUMN
         if norm_status_col in df.columns:
             norm_status = df[norm_status_col].fillna("").astype(str).str.upper()
         else:
             norm_status = pd.Series([""] * len(df), index=df.index)
-        norm_ok = (config.NORMALIZATION_OK_VALUE or "OK").upper()
-        norm_ok_count = int((norm_status == norm_ok).sum())
+
         pub_status_col = config.PUBLICATION_STATUS_COLUMN
         if pub_status_col in df.columns:
             pub_status = df[pub_status_col].fillna("").astype(str).str.upper()
         else:
             pub_status = pd.Series([""] * len(df), index=df.index)
-        pub_done = (config.PUBLICATION_DONE_VALUE or "PUBLICADO").upper()
-        pub_done_count = int((pub_status == pub_done).sum())
+
         obs_col = config.NORMALIZATION_OBS_COLUMN
         general_obs_col = "Observaciones"
-        obs_mask = pd.Series(False, index=df.index)
+        obs_mask = pd.Series(False, index=df.index, dtype=bool)
         if obs_col in df.columns:
             obs_mask |= df[obs_col].fillna("").astype(str).str.strip() != ""
         if general_obs_col in df.columns:
             obs_mask |= df[general_obs_col].fillna("").astype(str).str.strip() != ""
+        return norm_status, pub_status, obs_mask
+
+    def calculate_dashboard_metrics(self, df: pd.DataFrame) -> Dict:
+        norm_status, pub_status, obs_mask = self._dashboard_vectors(df)
+        total = int(len(df))
+        norm_ok = (config.NORMALIZATION_OK_VALUE or "OK").upper()
+        norm_ok_count = int((norm_status == norm_ok).sum())
+        pub_done = (config.PUBLICATION_DONE_VALUE or "PUBLICADO").upper()
+        pub_done_count = int((pub_status == pub_done).sum())
         obs_total = int(obs_mask.sum())
         general_metrics = {
             "total": total,
@@ -728,15 +743,16 @@ class RegistroService:
         for person, count in pub_productivity.items():
             ranking[person] = ranking.get(person, 0) + int(count)
         ranking = dict(sorted(ranking.items(), key=lambda kv: kv[1], reverse=True))
+        obs_column = config.NORMALIZATION_OBS_COLUMN
         quality = {
             "observaciones": obs_total,
             "observaciones_por_responsable": (
                 df[obs_mask]
-                .groupby(reviewer_col)[obs_col]
+                .groupby(reviewer_col)[obs_column]
                 .count()
                 .sort_values(ascending=False)
                 .to_dict()
-                if reviewer_col in df.columns and obs_col in df.columns
+                if reviewer_col in df.columns and obs_column in df.columns
                 else {}
             ),
             "retrabajos": int(((obs_mask) & (norm_status != norm_ok)).sum()),
@@ -756,28 +772,6 @@ class RegistroService:
                 t_total = (pd.to_datetime(df[config.PUBLICATION_DATE_COLUMN], errors="coerce") - fecha).dt.days.dropna()
                 if not t_total.empty:
                     time_metrics["ciclo_total"] = round(float(t_total.mean()), 2)
-        workload = {}
-        if assignment_col in df.columns:
-            workload["pendientes_por_responsable"] = (
-                df[pub_status != pub_done]
-                .groupby(assignment_col)
-                .size()
-                .sort_values(ascending=False)
-                .to_dict()
-            )
-        workload["sin_asignar"] = (
-            int(df[assignment_col].fillna("").astype(str).str.strip().eq("").sum())
-            if assignment_col in df.columns
-            else 0
-        )
-        if "Fecha" in df.columns:
-            ageing_mask = (norm_status != norm_ok) & (
-                pd.Timestamp(datetime.utcnow()) - pd.to_datetime(df["Fecha"], errors="coerce")
-                > pd.Timedelta(days=30)
-            )
-            workload["bloqueadas"] = int(ageing_mask.sum())
-        else:
-            workload["bloqueadas"] = 0
         return {
             "general": general_metrics,
             "pipeline": pipeline,
@@ -786,5 +780,18 @@ class RegistroService:
             "ranking": ranking,
             "calidad": quality,
             "tiempos": time_metrics,
-            "operativo": workload,
         }
+
+    def dashboard_stage_masks(self, df: pd.DataFrame) -> Dict[str, pd.Series]:
+        norm_status, pub_status, obs_mask = self._dashboard_vectors(df)
+        norm_ok = (config.NORMALIZATION_OK_VALUE or "OK").upper()
+        pub_done = (config.PUBLICATION_DONE_VALUE or "PUBLICADO").upper()
+        base_mask = pd.Series(True, index=df.index, dtype=bool)
+        masks = {
+            "Registradas": base_mask,
+            "En proceso": pub_status != pub_done,
+            "Normalizadas": norm_status == norm_ok,
+            "Con observaciones": obs_mask,
+            "Publicadas": pub_status == pub_done,
+        }
+        return masks
