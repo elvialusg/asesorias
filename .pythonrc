@@ -1,0 +1,1 @@
+import site, sys; site.addsitedir(r"C:\Users\elvia lucia\AppData\Roaming\Python\Python313\site-packages")
