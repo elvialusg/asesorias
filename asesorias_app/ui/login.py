@@ -107,13 +107,17 @@ def render_login_page() -> None:
                     placeholder="Contraseña",
                 )
                 submitted_login = st.form_submit_button("Iniciar sesión", use_container_width=True)
-            activate_col, recover_col = st.columns(2)
-            with activate_col:
-                if st.button("Confirmar contraseña por primera vez", use_container_width=True):
-                    st.session_state["login_mode"] = "activation"
-                    _streamlit_rerun()
-            with recover_col:
-                if st.button("Olvidé mi contraseña", use_container_width=True):
+            cols = st.columns(2)
+            can_show_activation = auth_service.needs_password_setup(email or "")
+            with cols[0]:
+                if can_show_activation:
+                    if st.button("Activar contraseña", key="link_activate", type="secondary"):
+                        st.session_state["login_mode"] = "activation"
+                        _streamlit_rerun()
+                else:
+                    st.markdown("")
+            with cols[1]:
+                if st.button("Olvidé mi contraseña", key="link_recover", type="secondary"):
                     st.session_state["login_mode"] = "recovery"
                     _streamlit_rerun()
         elif st.session_state["login_mode"] in {"activation", "recovery"}:
