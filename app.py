@@ -1,17 +1,18 @@
-"""Punto de entrada de la aplicación Streamlit."""
+"""Punto de entrada de la aplicacion Streamlit."""
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
-import json
 
 import streamlit as st
 
 from asesorias_app import config
+from asesorias_app.auth import service as auth_service
 from asesorias_app.ui.app_shell import render_app
 
-st.set_page_config(page_title="TesisFlow", layout="wide")
+st.set_page_config(page_title="Controltesis", layout="wide")
 
 
 def configure_google_credentials() -> None:
@@ -25,7 +26,7 @@ def configure_google_credentials() -> None:
                 json_body = json.loads(raw_text)
             except json.JSONDecodeError as exc:
                 raise ValueError(
-                    "El secret GOOGLE_SERVICE_ACCOUNT_JSON no es un JSON válido."
+                    "El secret GOOGLE_SERVICE_ACCOUNT_JSON no es un JSON valido."
                 ) from exc
         elif isinstance(json_key, dict):
             json_body = json_key
@@ -56,6 +57,7 @@ def configure_google_credentials() -> None:
 
 def main():
     configure_google_credentials()
+    auth_service.ensure_default_users()
     render_app()
 
 

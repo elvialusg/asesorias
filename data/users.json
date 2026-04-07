@@ -1,0 +1,91 @@
+[
+  {
+    "email": "dir_biblioteca@umanizales.edu.co",
+    "name": "Diego Alejandro Soto Herrera",
+    "role": "direccion",
+    "password_hash": "lQDjCp+Jii/1tBWRHMHOJA==:6Ea9tcw/JThoyRlJ6FAAXFJg48KwuOWbTsuPw9dhJg8=",
+    "reset_token": null,
+    "reset_token_expire": null
+  },
+  {
+    "email": "referencia@umanizales.edu.co",
+    "name": "José Wilman Tangarife Cardona",
+    "role": "normalizacion",
+    "password_hash": "keK4KzVrP4ZyWdZSjci57g==:pH97HiiNwMbGGrkEp5ru4R4FrTVGh8YsYWZH0I3CS4k=",
+    "reset_token": null,
+    "reset_token_expire": null
+  },
+  {
+    "email": "prestamo1@umanizales.edu.co",
+    "name": "Álvaro de Jesús Agudelo López",
+    "role": "normalizacion",
+    "password_hash": "7cBSy72WofMLjU+H09KzwQ==:fOwm5VnS9jVm6eM4LeIms0tDx6WEulCV7I6jJdBrZ4I=",
+    "reset_token": null,
+    "reset_token_expire": null
+  },
+  {
+    "email": "referencia2@umanizales.edu.co",
+    "name": "Juan Manuel Ramírez Orozco",
+    "role": "normalizacion",
+    "password_hash": "diR84edpMEPqbxdKzImDFg==:z32q4NDSiAJ8wsIMwQzVKPJbPhTa0xsCwsYg/IBOc1w=",
+    "reset_token": null,
+    "reset_token_expire": null
+  },
+  {
+    "email": "bibliobe@umanizales.edu.co",
+    "name": "Harold García Álvarez",
+    "role": "normalizacion",
+    "password_hash": "5/+CDhdTpwExVW3JpPgpKQ==:3TvymwdOTuVNF1LKNMECeIQg0Gr9ynNXJVGqh+c9x3c=",
+    "reset_token": null,
+    "reset_token_expire": null
+  },
+  {
+    "email": "biblio_publicacion@umanizales.edu.co",
+    "name": "Luz Andrea Sepúlveda Escobar",
+    "role": "publicacion",
+    "password_hash": "zOpieUCZeBDxbrmZOjY27Q==:sDu5oTJ6ne67EalxcfJlDS3Q2LBWPnd+tTuJpmTs+tY=",
+    "reset_token": null,
+    "reset_token_expire": null
+  },
+  {
+    "email": "biblio_servicios@umanizales.edu.co",
+    "name": "María Eugenia Nieto Medina",
+    "role": "servicios",
+    "password_hash": "6IBual2yt96KSBaDJaHNdw==:3vQfYFq+HACbctH+3Fs3WTNDuHXXxv7dbmMUDPyySRg=",
+    "reset_token": null,
+    "reset_token_expire": null
+  },
+  {
+    "email": "formacion@umanizales.edu.co",
+    "name": "Juan Pablo Charry Osorio",
+    "role": "normalizacion",
+    "password_hash": "OjVGcdO83bJZ3c71pGNoqg==:+pG+scYLuxq9Phsp2SQ4JGmrRuyk9BnrvC3CFCY9Iyg=",
+    "reset_token": null,
+    "reset_token_expire": null
+  },
+  {
+    "email": "gescontenidos@umanizales.edu.co",
+    "name": "Gloria Patricia Quintero Serna",
+    "role": "publicacion",
+    "password_hash": "S75LYQfuzADJbhqGg0SN0g==:nZU+Q61VBJBDS7AkPHYa6zgZn+CZi8UdhEhmG8O2Lb8=",
+    "reset_token": null,
+    "reset_token_expire": null
+  },
+  {
+    "email": "aux_gescontenidos@umanizales.edu.co",
+    "name": "Diana Patricia Salazar Martínez",
+    "role": "publicacion",
+    "password_hash": "M2BNqwahOkz6zkhccRpB2g==:aMcMkOAPwcUGLVAAJzg5lJTukDQfU035HAJE+tPq7z4=",
+    "reset_token": null,
+    "reset_token_expire": null
+  },
+  {
+    "email": "biblio_data@umanizales.edu.co",
+    "name": "Elvia Lucia Sánchez García",
+    "role": "administrador",
+    "password_hash": "WI5joEQ091Qntk7Z9WtPTQ==:dL2VlWGenEFAcojq4kWCtBXAS2gA42x8HiY8iGF+n/w=",
+    "reset_token": null,
+    "reset_token_expire": null,
+    "must_reset": false
+  }
+]
