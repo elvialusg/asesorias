@@ -65,9 +65,19 @@ def render_login_page() -> None:
     st.session_state.setdefault("login_email", "")
     st.session_state.setdefault("login_password", "")
     st.session_state.setdefault("login_password_reset", False)
+    st.session_state.setdefault("login_mode", "login")
+    st.session_state.setdefault("login_activation_email", "")
+    st.session_state.setdefault("login_activation_password", "")
+    st.session_state.setdefault("login_activation_confirm", "")
+    st.session_state.setdefault("login_activation_reset", False)
     if st.session_state.get("login_password_reset"):
         st.session_state["login_password"] = ""
         st.session_state["login_password_reset"] = False
+    if st.session_state.get("login_activation_reset"):
+        st.session_state["login_activation_email"] = ""
+        st.session_state["login_activation_password"] = ""
+        st.session_state["login_activation_confirm"] = ""
+        st.session_state["login_activation_reset"] = False
 
     st.markdown(
         """
@@ -80,161 +90,84 @@ def render_login_page() -> None:
         unsafe_allow_html=True,
     )
 
+    submitted_login = False
     _, center_col, _ = st.columns([1, 2, 1])
     with center_col:
-        with st.form("tf_login_form", border=False, clear_on_submit=False):
-            email = st.text_input(
-                "Correo institucional",
-                key="login_email",
-                placeholder="usuario@umanizales.edu.co",
-            )
-            password = st.text_input(
-                "Contraseña",
-                key="login_password",
-                type="password",
-                placeholder="Contraseña",
-            )
-            submitted = st.form_submit_button("Iniciar sesión", use_container_width=True)
+        if st.session_state["login_mode"] == "login":
+            with st.form("tf_login_form", border=False, clear_on_submit=False):
+                email = st.text_input(
+                    "Correo institucional",
+                    key="login_email",
+                    placeholder="usuario@umanizales.edu.co",
+                )
+                password = st.text_input(
+                    "Contraseña",
+                    key="login_password",
+                    type="password",
+                    placeholder="Contraseña",
+                )
+                submitted_login = st.form_submit_button("Iniciar sesión", use_container_width=True)
+            activate_col, recover_col = st.columns(2)
+            with activate_col:
+                if st.button("Confirmar contraseña por primera vez", use_container_width=True):
+                    st.session_state["login_mode"] = "activation"
+                    _streamlit_rerun()
+            with recover_col:
+                if st.button("Olvidé mi contraseña", use_container_width=True):
+                    st.session_state["login_mode"] = "recovery"
+                    _streamlit_rerun()
+        elif st.session_state["login_mode"] in {"activation", "recovery"}:
+            mode_title = "Registrar contraseña" if st.session_state["login_mode"] == "activation" else "Actualizar contraseña"
+            with st.form("tf_activation_form", border=False, clear_on_submit=False):
+                act_email = st.text_input(
+                    "Correo institucional",
+                    key="login_activation_email",
+                    placeholder="usuario@umanizales.edu.co",
+                )
+                act_password = st.text_input(
+                    "Nueva contraseña",
+                    key="login_activation_password",
+                    type="password",
+                )
+                act_confirm = st.text_input(
+                    "Confirma la contraseña",
+                    key="login_activation_confirm",
+                    type="password",
+                )
+                activation_submit = st.form_submit_button(mode_title, use_container_width=True)
+            if activation_submit:
+                activation_email_clean = (act_email or "").strip()
+                if not activation_email_clean or not act_password:
+                    st.error("Completa el correo institucional y la nueva contraseña.")
+                elif len(act_password) < 8:
+                    st.error("La contraseña debe tener al menos 8 caracteres.")
+                elif act_password != act_confirm:
+                    st.error("Las contraseñas no coinciden.")
+                elif not auth_service.ensure_user_record(activation_email_clean):
+                    st.error("Ese correo no está autorizado para controlTesis.")
+                else:
+                    ok = auth_service.set_initial_password(
+                        activation_email_clean,
+                        act_password,
+                        force=True,
+                    )
+                    if ok:
+                        st.success("Contraseña registrada. Ahora puedes iniciar sesión.")
+                        st.session_state["login_mode"] = "login"
+                        st.session_state["login_activation_reset"] = True
+                        _streamlit_rerun()
+                    else:
+                        st.error("No se pudo actualizar la contraseña. Verifica los datos ingresados.")
+            if st.button("Volver al inicio de sesión", use_container_width=True):
+                st.session_state["login_mode"] = "login"
+                _streamlit_rerun()
 
         error_msg = st.session_state.get(LOGIN_ERROR_KEY)
         if error_msg:
             st.markdown(f'<div class="tf-login-alert">{error_msg}</div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="tf-login-tools">', unsafe_allow_html=True)
-        tabs = st.tabs(["Activar acceso", "Cambiar contraseña", "Recuperar acceso"])
-
-        with tabs[0]:
-            with st.form("tf_activation_form", border=False, clear_on_submit=False):
-                activation_email = st.text_input(
-                    "Correo institucional",
-                    key="activation_email",
-                    placeholder="usuario@umanizales.edu.co",
-                )
-                activation_password = st.text_input(
-                    "Nueva contraseña",
-                    key="activation_password",
-                    type="password",
-                )
-                activation_confirm = st.text_input(
-                    "Confirma la contraseña",
-                    key="activation_confirm",
-                    type="password",
-                )
-                activation_submit = st.form_submit_button("Activar cuenta", use_container_width=True)
-            if activation_submit:
-                activation_email_clean = (activation_email or "").strip()
-                if not activation_email_clean or not activation_password:
-                    st.error("Completa el correo institucional y la nueva contraseña.")
-                elif activation_password != activation_confirm:
-                    st.error("Las contraseñas no coinciden.")
-                elif not auth_service.ensure_user_record(activation_email_clean):
-                    st.error("Ese correo no está autorizado para controlTesis.")
-                else:
-                    needs_setup = auth_service.needs_password_setup(activation_email_clean)
-                    ok = auth_service.set_initial_password(
-                        activation_email_clean, activation_password, force=True
-                    )
-                    if ok and needs_setup:
-                        st.success("Activaste tu cuenta. Puedes ingresar con la nueva contraseña.")
-                    elif ok:
-                        st.info("La cuenta ya existía, actualizamos tu contraseña y bloqueamos accesos anteriores.")
-                    else:
-                        st.error("No se pudo activar la cuenta. Verifica los datos ingresados.")
-
-        with tabs[1]:
-            with st.form("tf_change_form", border=False, clear_on_submit=False):
-                change_email = st.text_input(
-                    "Correo institucional",
-                    key="change_email",
-                    placeholder="usuario@umanizales.edu.co",
-                )
-                current_password = st.text_input(
-                    "Contraseña actual",
-                    key="change_current_password",
-                    type="password",
-                )
-                new_password = st.text_input(
-                    "Nueva contraseña",
-                    key="change_new_password",
-                    type="password",
-                )
-                new_password_confirm = st.text_input(
-                    "Confirma la nueva contraseña",
-                    key="change_confirm_password",
-                    type="password",
-                )
-                change_submit = st.form_submit_button("Cambiar contraseña", use_container_width=True)
-            if change_submit:
-                change_email_clean = (change_email or "").strip()
-                if not change_email_clean or not current_password or not new_password:
-                    st.error("Todos los campos son obligatorios para cambiar la contraseña.")
-                elif new_password != new_password_confirm:
-                    st.error("Las contraseñas nuevas no coinciden.")
-                elif auth_service.change_password(change_email_clean, current_password, new_password):
-                    st.success("Actualizamos tu contraseña correctamente.")
-                else:
-                    st.error("No pudimos cambiar la contraseña. Revisa tus credenciales.")
-
-        with tabs[2]:
-            request_col, apply_col = st.columns(2)
-            with request_col:
-                with st.form("tf_request_reset_form", border=False, clear_on_submit=False):
-                    reset_email = st.text_input(
-                        "Correo institucional",
-                        key="reset_email",
-                        placeholder="usuario@umanizales.edu.co",
-                    )
-                    request_submit = st.form_submit_button("Generar código temporal", use_container_width=True)
-                if request_submit:
-                    reset_email_clean = (reset_email or "").strip()
-                    if not reset_email_clean:
-                        st.error("Ingresa el correo para generar el código temporal.")
-                    else:
-                        token = auth_service.create_reset_token(reset_email_clean)
-                        if token:
-                            st.success(
-                                f"Código temporal generado: {token}. Úsalo en la sección de restablecimiento."
-                            )
-                        else:
-                            st.error("No se encontró un usuario con ese correo.")
-            with apply_col:
-                with st.form("tf_reset_form", border=False, clear_on_submit=False):
-                    reset_apply_email = st.text_input(
-                        "Correo institucional",
-                        key="reset_apply_email",
-                        placeholder="usuario@umanizales.edu.co",
-                    )
-                    reset_token = st.text_input(
-                        "Código temporal",
-                        key="reset_token",
-                        placeholder="ABC123",
-                    )
-                    reset_new_password = st.text_input(
-                        "Nueva contraseña",
-                        key="reset_new_password",
-                        type="password",
-                    )
-                    reset_confirm_password = st.text_input(
-                        "Confirma la nueva contraseña",
-                        key="reset_confirm_password",
-                        type="password",
-                    )
-                    reset_submit = st.form_submit_button("Restablecer contraseña", use_container_width=True)
-                if reset_submit:
-                    reset_apply_email_clean = (reset_apply_email or "").strip()
-                    reset_token_clean = (reset_token or "").strip()
-                    if not reset_apply_email_clean or not reset_token_clean or not reset_new_password:
-                        st.error("Completa todos los campos para restablecer la contraseña.")
-                    elif reset_new_password != reset_confirm_password:
-                        st.error("Las contraseñas nuevas no coinciden.")
-                    elif auth_service.reset_password(
-                        reset_apply_email_clean, reset_token_clean, reset_new_password
-                    ):
-                        st.success("Contraseña actualizada. Inicia sesión con tu nuevo acceso.")
-                    else:
-                        st.error("No fue posible restablecer la contraseña. Verifica el código temporal.")
-
-        st.markdown("</div>", unsafe_allow_html=True)
+    if st.session_state["login_mode"] == "login":
+        st.session_state["show_activation_form"] = False
 
     st.markdown(
         f"""
@@ -248,7 +181,7 @@ def render_login_page() -> None:
         unsafe_allow_html=True,
     )
 
-    if submitted:
+    if submitted_login:
         user = auth_service.authenticate(email, password)
         if user is None:
             st.session_state[LOGIN_ERROR_KEY] = "Credenciales inválidas. Verifica correo y contraseña."
