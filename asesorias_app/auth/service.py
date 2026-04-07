@@ -1,4 +1,4 @@
-"""Servicios de autenticación y seguridad para TesisFlow."""
+"""Servicios de autenticación y seguridad para controlTesis."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from asesorias_app.core.utils import fix_text_encoding
 USERS_FILE = config.DATA_DIR / "users.json"
 PASSWORD_ITERATIONS = 390_000
 RESET_TOKEN_TTL = 3600  # 1 hora
-DEFAULT_PASSWORD = "TesisFlow2024!"
+DEFAULT_PASSWORD = "ControlTesis2024!"
 ADMIN_EMAIL = "biblio_data@umanizales.edu.co"
 
 # Mapa básico de permisos por rol. Sirve para habilitar características específicas
