@@ -57,22 +57,25 @@
   border-color: var(--accent);
 }
 
-.stButton button {
+/* 🔥 BOTONES CORREGIDOS (SIN HOVER EFECTO) */
+.stButton button,
+.stButton button:hover,
+.stButton button:focus,
+.stButton button:active {
   border-radius: 12px !important;
   padding: 0.6rem 1.5rem !important;
   font-weight: 600 !important;
-}
 
-.stButton button[kind="primary"] {
-  background: linear-gradient(135deg, var(--accent), var(--accent-dark)) !important;
+  background: var(--accent) !important;
   color: #0a1b1e !important;
   border: none !important;
-}
 
-.stButton button[kind="secondary"] {
-  border: 1px solid var(--accent) !important;
-  color: #0a1b1e !important;
-  background: var(--accent) !important;
+  box-shadow: none !important;
+  transform: none !important;
+  transition: none !important;
+  filter: none !important;
+  opacity: 1 !important;
+  outline: none !important;
 }
 
 .metric-card {
@@ -151,12 +154,11 @@ div[data-testid="stExpander"] .streamlit-expanderHeader span {
   color: #0a1b1e !important;
 }
 
-
-
 .st-emotion-cache-11fa8f,
 .st-emotion-cache-11fa8f * {
   color: var(--text-light) !important;
 }
+
 .st-emotion-cache-11fa8f {
   display: block !important;
   background: rgba(15, 87, 96, 0.85) !important;
@@ -181,16 +183,20 @@ div[data-testid="stExpander"] .streamlit-expanderHeader span {
   text-transform: uppercase;
 }
 
-.stDownloadButton button {
-  background: linear-gradient(135deg, var(--accent), var(--accent-dark)) !important;
+.stDownloadButton button,
+.stDownloadButton button:hover,
+.stDownloadButton button:focus,
+.stDownloadButton button:active {
+  background: var(--accent) !important;
   border: none !important;
   color: #0a1b1e !important;
   font-weight: 600 !important;
   border-radius: 12px !important;
-}
-
-.stDownloadButton button:hover {
-  filter: brightness(0.95);
+  box-shadow: none !important;
+  transform: none !important;
+  transition: none !important;
+  filter: none !important;
+  outline: none !important;
 }
 
 .card .stFileUploader label {
@@ -212,4 +218,267 @@ div[data-testid="stExpander"] .streamlit-expanderHeader span {
   .card {
     padding: 16px;
   }
+}
+
+/* ---------- LOGIN ---------- */
+.tf-login-hero {
+  text-align: center;
+  margin: 2rem auto 1.5rem;
+}
+
+.tf-login-banner {
+  display: inline-block;
+  background: linear-gradient(120deg, #0c3b34, #0f5760, #1c8a73);
+  padding: 2.5rem 3rem;
+  border-radius: 24px;
+  box-shadow: 0 25px 65px rgba(4, 12, 17, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+.tf-login-banner h1 {
+  margin: 0.35rem 0;
+  font-size: 2.6rem;
+  color: var(--text-light);
+  letter-spacing: 0.08em;
+}
+
+.tf-login-overline {
+  text-transform: uppercase;
+  letter-spacing: 0.35em;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.65);
+  margin-bottom: 0.4rem;
+}
+
+.tf-login-copy {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 1rem;
+}
+
+.tf-login-card__header {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 20px;
+  padding: 1.5rem 2rem;
+  margin-bottom: 1rem;
+  text-align: center;
+  color: var(--text-light);
+  box-shadow: 0 10px 30px rgba(7, 16, 19, 0.55);
+}
+
+.tf-login-card__header h2 {
+  margin: 0;
+  font-size: 1.8rem;
+}
+
+.tf-login-card__header p {
+  margin: 0.5rem 0 0;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+form[data-testid="stForm"][aria-label="tf_login_form"],
+form[data-testid="stForm"][aria-label="tf_activation_form"],
+form[data-testid="stForm"][aria-label="tf_change_form"],
+form[data-testid="stForm"][aria-label="tf_request_reset_form"],
+form[data-testid="stForm"][aria-label="tf_reset_form"],
+form[id*="tf_login_form"],
+form[id*="tf_activation_form"],
+form[id*="tf_change_form"],
+form[id*="tf_request_reset_form"],
+form[id*="tf_reset_form"] {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 24px;
+  padding: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 30px 60px rgba(7, 16, 19, 0.65);
+  backdrop-filter: blur(6px);
+}
+
+form[data-testid="stForm"][aria-label="tf_login_form"] label,
+form[data-testid="stForm"][aria-label="tf_activation_form"] label,
+form[data-testid="stForm"][aria-label="tf_change_form"] label,
+form[data-testid="stForm"][aria-label="tf_request_reset_form"] label,
+form[data-testid="stForm"][aria-label="tf_reset_form"] label,
+form[id*="tf_login_form"] label,
+form[id*="tf_activation_form"] label,
+form[id*="tf_change_form"] label,
+form[id*="tf_request_reset_form"] label,
+form[id*="tf_reset_form"] label {
+  color: var(--text-light) !important;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+form[data-testid="stForm"][aria-label="tf_login_form"] input,
+form[data-testid="stForm"][aria-label="tf_activation_form"] input,
+form[data-testid="stForm"][aria-label="tf_change_form"] input,
+form[data-testid="stForm"][aria-label="tf_request_reset_form"] input,
+form[data-testid="stForm"][aria-label="tf_reset_form"] input,
+form[id*="tf_login_form"] input,
+form[id*="tf_activation_form"] input,
+form[id*="tf_change_form"] input,
+form[id*="tf_request_reset_form"] input,
+form[id*="tf_reset_form"] input {
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #0f172a !important;
+  border-radius: 16px !important;
+  border: none !important;
+  font-size: 1rem !important;
+  padding: 0.85rem 1rem !important;
+}
+
+form[data-testid="stForm"][aria-label="tf_login_form"] .stButton button,
+form[data-testid="stForm"][aria-label="tf_login_form"] .stButton button:hover,
+form[data-testid="stForm"][aria-label="tf_login_form"] .stButton button:focus,
+form[data-testid="stForm"][aria-label="tf_login_form"] .stButton button:active,
+form[data-testid="stForm"][aria-label="tf_activation_form"] .stButton button,
+form[data-testid="stForm"][aria-label="tf_activation_form"] .stButton button:hover,
+form[data-testid="stForm"][aria-label="tf_activation_form"] .stButton button:focus,
+form[data-testid="stForm"][aria-label="tf_activation_form"] .stButton button:active,
+form[data-testid="stForm"][aria-label="tf_change_form"] .stButton button,
+form[data-testid="stForm"][aria-label="tf_change_form"] .stButton button:hover,
+form[data-testid="stForm"][aria-label="tf_change_form"] .stButton button:focus,
+form[data-testid="stForm"][aria-label="tf_change_form"] .stButton button:active,
+form[data-testid="stForm"][aria-label="tf_request_reset_form"] .stButton button,
+form[data-testid="stForm"][aria-label="tf_request_reset_form"] .stButton button:hover,
+form[data-testid="stForm"][aria-label="tf_request_reset_form"] .stButton button:focus,
+form[data-testid="stForm"][aria-label="tf_request_reset_form"] .stButton button:active,
+form[data-testid="stForm"][aria-label="tf_reset_form"] .stButton button,
+form[data-testid="stForm"][aria-label="tf_reset_form"] .stButton button:hover,
+form[data-testid="stForm"][aria-label="tf_reset_form"] .stButton button:focus,
+form[data-testid="stForm"][aria-label="tf_reset_form"] .stButton button:active,
+form[id*="tf_login_form"] .stButton button,
+form[id*="tf_login_form"] .stButton button:hover,
+form[id*="tf_login_form"] .stButton button:focus,
+form[id*="tf_login_form"] .stButton button:active,
+form[id*="tf_activation_form"] .stButton button,
+form[id*="tf_activation_form"] .stButton button:hover,
+form[id*="tf_activation_form"] .stButton button:focus,
+form[id*="tf_activation_form"] .stButton button:active,
+form[id*="tf_change_form"] .stButton button,
+form[id*="tf_change_form"] .stButton button:hover,
+form[id*="tf_change_form"] .stButton button:focus,
+form[id*="tf_change_form"] .stButton button:active,
+form[id*="tf_request_reset_form"] .stButton button,
+form[id*="tf_request_reset_form"] .stButton button:hover,
+form[id*="tf_request_reset_form"] .stButton button:focus,
+form[id*="tf_request_reset_form"] .stButton button:active,
+form[id*="tf_reset_form"] .stButton button,
+form[id*="tf_reset_form"] .stButton button:hover,
+form[id*="tf_reset_form"] .stButton button:focus,
+form[id*="tf_reset_form"] .stButton button:active {
+  background: #bde94d !important;
+  color: #0c3b34 !important;
+  border-radius: 999px !important;
+  font-weight: 700 !important;
+  padding: 0.75rem 1.5rem !important;
+  border: 1px solid #bde94d !important;
+}
+
+.tf-login-alert {
+  margin-top: 1rem;
+  padding: 0.85rem 1.1rem;
+  border-radius: 12px;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  color: #fee2e2;
+  font-weight: 600;
+  text-align: center;
+}
+
+.tf-login-next {
+  margin-top: 1rem;
+  background: rgba(15, 87, 96, 0.65);
+  padding: 0.85rem 1rem;
+  border-radius: 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+.tf-login-support {
+  margin: 2rem auto 0;
+  padding: 1rem 1.2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  display: inline-flex;
+  gap: 0.7rem;
+  align-items: center;
+  background: rgba(10, 27, 30, 0.6);
+  color: var(--text-light);
+  box-shadow: 0 12px 30px rgba(3, 10, 12, 0.5);
+}
+
+.tf-login-support a {
+  color: #cbe779;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tf-login-support-row {
+  text-align: center;
+}
+
+.tf-login-tools {
+  margin-top: 1.5rem;
+  padding: 1.2rem 1.5rem 1.5rem;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(10, 27, 30, 0.65);
+  box-shadow: 0 25px 55px rgba(4, 12, 17, 0.5);
+}
+
+.tf-login-tools .stTabs {
+  margin-top: 0.5rem;
+}
+
+.tf-login-tools form[data-testid="stForm"],
+.tf-login-tools form {
+  margin-top: 1rem;
+}
+
+/* ---------- SESSION HEADER ---------- */
+.tf-session-heading {
+  background: rgba(10, 27, 30, 0.65);
+  border-radius: 20px;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 1rem;
+  box-shadow: 0 25px 55px rgba(4, 12, 17, 0.55);
+}
+
+.tf-session-eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.tf-session-heading h2 {
+  margin: 0.35rem 0 0;
+  font-size: 1.4rem;
+  color: var(--text-light);
+}
+
+.tf-user-id {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 1rem 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 15px 35px rgba(7, 16, 19, 0.45);
+}
+
+.tf-user-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 0.15rem;
+}
+
+.tf-user-meta {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.9rem;
 }

@@ -13,9 +13,12 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from asesorias_app import config
+from asesorias_app.auth import service as auth_service
+from asesorias_app.auth.service import AuthUser
 from asesorias_app.config import TEMPLATE_PATH
 from asesorias_app.core import utils
 from asesorias_app.services.registro_service import RegistroService
+from asesorias_app.ui import login as login_ui
 from asesorias_app.ui.theme import load_theme
 
 PLACEHOLDER_OPTION = "Seleccionar"
@@ -52,12 +55,14 @@ def _inject_button_styles() -> None:
         return
     st.session_state[BUTTON_STYLE_STATE_KEY] = True
     primary_bg = DASHBOARD_GREEN_PALETTE[0]
-    primary_hover = "#14594f"
     secondary_border = DASHBOARD_GREEN_PALETTE[0]
     st.markdown(
         f"""
 <style>
-div[data-testid="baseButton-primary"] button {{
+div[data-testid="baseButton-primary"] button,
+div[data-testid="baseButton-primary"] button:hover,
+div[data-testid="baseButton-primary"] button:focus,
+div[data-testid="baseButton-primary"] button:active {{
     background-color: {primary_bg};
     color: #ffffff;
     border-radius: 999px;
@@ -65,29 +70,23 @@ div[data-testid="baseButton-primary"] button {{
     padding: 0.45rem 1.5rem;
     font-weight: 600;
     letter-spacing: 0.01em;
-    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    box-shadow: none;
+    transition: none;
+    outline: none;
 }}
-div[data-testid="baseButton-primary"] button:hover {{
-    background-color: {primary_hover};
-    border-color: {primary_hover};
-}}
-div[data-testid="baseButton-secondary"] button {{
+div[data-testid="baseButton-secondary"] button,
+div[data-testid="baseButton-secondary"] button:hover,
+div[data-testid="baseButton-secondary"] button:focus,
+div[data-testid="baseButton-secondary"] button:active {{
     background-color: transparent;
     color: {DASHBOARD_TEXT_COLOR};
     border-radius: 999px;
     border: 1px solid {secondary_border};
     padding: 0.4rem 1.25rem;
     font-weight: 500;
-    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-}}
-div[data-testid="baseButton-secondary"] button:hover {{
-    background-color: #e2f5ec;
-    border-color: {primary_bg};
-}}
-div[data-testid="baseButton-primary"] button:focus,
-div[data-testid="baseButton-secondary"] button:focus {{
+    transition: none;
+    box-shadow: none;
     outline: none;
-    box-shadow: 0 0 0 2px rgba(24, 111, 101, 0.35);
 }}
 div[data-testid="baseButton-primary"] button:disabled,
 div[data-testid="baseButton-secondary"] button:disabled {{
@@ -366,8 +365,8 @@ def _autofill_by_cedula(
         }
 
 
-def _render_tabs(service: RegistroService, meta: dict) -> None:
-    load_theme()
+def _render_tabs(service: RegistroService, meta: dict, user: AuthUser) -> None:
+    login_ui.render_session_header(user)
 
     if st.session_state.get("reset_pending", False) or "init_done" not in st.session_state:
         _reset_form(meta)
@@ -396,19 +395,25 @@ def _render_tabs(service: RegistroService, meta: dict) -> None:
     )
 
     menu_col, content_col = st.columns([0.24, 0.76])
-    menu_items = {
-        "register": "Registrar tesis",
-        "consult": "Consultar usuario",
-        "normalizacion": "Normalización",
-        "publicacion": "Publicación",
-        "dashboard": "Metricas",
-    }
+    raw_menu = [
+        {"key": "register", "label": "Registrar tesis", "feature": "register"},
+        {"key": "consult", "label": "Consultar usuario", "feature": "consult"},
+        {"key": "normalizacion", "label": "Normalización", "feature": "normalizacion"},
+        {"key": "publicacion", "label": "Publicación", "feature": "publicacion"},
+        {"key": "dashboard", "label": "Métricas", "feature": "dashboard"},
+    ]
+    available_menu = [item for item in raw_menu if auth_service.can_access_feature(user, item["feature"])]
+    if not available_menu:
+        st.error("Tu perfil no tiene módulos habilitados todavía.")
+        return
+    default_page = available_menu[0]["key"]
+    allowed_keys = {item["key"] for item in available_menu}
     query_params = st.query_params
-    current_page = query_params.get("page", "register")
+    current_page = query_params.get("page", default_page)
     if isinstance(current_page, list):
-        current_page = current_page[0] if current_page else "register"
-    if current_page not in menu_items:
-        current_page = "register"
+        current_page = current_page[0] if current_page else default_page
+    if current_page not in allowed_keys:
+        current_page = default_page
     st.session_state["current_page"] = current_page
 
     with menu_col:
@@ -432,7 +437,9 @@ a.menu-link.active {
 """,
                 unsafe_allow_html=True,
             )
-            for key, label in menu_items.items():
+            for item in available_menu:
+                key = item["key"]
+                label = item["label"]
                 is_active = st.session_state.get("current_page") == key
                 href = f"?page={key}"
                 classes = "menu-link active" if is_active else "menu-link"
@@ -1343,6 +1350,12 @@ def _tab_dashboard(tab, service: RegistroService, meta: dict) -> None:
 
 
 def render_app() -> None:
+    load_theme()
+    user = login_ui.get_current_user()
+    if not user:
+        login_ui.render_login_page()
+        return
+
     service = RegistroService()
     if not TEMPLATE_PATH.exists():
         st.error(
@@ -1354,4 +1367,4 @@ def render_app() -> None:
     except Exception as exc:
         st.error(f"No se pudieron cargar las listas de apoyo: {exc}")
         return
-    _render_tabs(service, meta)
+    _render_tabs(service, meta, user)
