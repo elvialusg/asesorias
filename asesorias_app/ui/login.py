@@ -1,7 +1,8 @@
-"""Pantalla de login y barra de sesión para TesisFlow."""
+"""Pantalla de login y barra de sesión para controlTesis."""
 
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 import streamlit as st
@@ -10,22 +11,45 @@ from asesorias_app.auth import service as auth_service
 from asesorias_app.auth.service import AuthUser
 
 SESSION_USER_KEY = "tf_auth_user"
+SESSION_LAST_ACTIVE_KEY = "tf_auth_last_active"
+SESSION_TIMEOUT_SECONDS = 3600
 LOGIN_ERROR_KEY = "_tf_login_error"
 SUPPORT_EMAIL = "biblio_data@umanizales.edu.co"
 
 
 def get_current_user() -> Optional[AuthUser]:
-    user = st.session_state.get(SESSION_USER_KEY)
-    if isinstance(user, AuthUser):
-        return user
-    return None
+    user_data = st.session_state.get(SESSION_USER_KEY)
+    if isinstance(user_data, AuthUser):
+        payload = {
+            "email": user_data.email,
+            "name": user_data.name,
+            "role": user_data.role,
+            "must_reset": user_data.must_reset,
+        }
+        st.session_state[SESSION_USER_KEY] = payload
+        user_data = payload
+    if not isinstance(user_data, dict):
+        return None
+    last_active = st.session_state.get(SESSION_LAST_ACTIVE_KEY, 0)
+    if time.time() - float(last_active or 0) > SESSION_TIMEOUT_SECONDS:
+        _set_current_user(None)
+        return None
+    st.session_state[SESSION_LAST_ACTIVE_KEY] = time.time()
+    return AuthUser(**user_data)
 
 
 def _set_current_user(user: Optional[AuthUser]) -> None:
     if user is None:
         st.session_state.pop(SESSION_USER_KEY, None)
+        st.session_state.pop(SESSION_LAST_ACTIVE_KEY, None)
     else:
-        st.session_state[SESSION_USER_KEY] = user
+        st.session_state[SESSION_USER_KEY] = {
+            "email": user.email,
+            "name": user.name,
+            "role": user.role,
+            "must_reset": user.must_reset,
+        }
+        st.session_state[SESSION_LAST_ACTIVE_KEY] = time.time()
 
 
 def _streamlit_rerun() -> None:
@@ -49,10 +73,7 @@ def render_login_page() -> None:
         """
 <section class="tf-login-hero">
     <div class="tf-login-banner">
-        <h1>TesisFlow</h1>
-        <p class="tf-login-copy">
-            Acceso exclusivo para personal institucional autorizado.
-        </p>
+        <h1>ControlTesis</h1>
     </div>
 </section>
 """,
@@ -107,7 +128,7 @@ def render_login_page() -> None:
                 elif activation_password != activation_confirm:
                     st.error("Las contraseñas no coinciden.")
                 elif not auth_service.ensure_user_record(activation_email_clean):
-                    st.error("Ese correo no está autorizado para TesisFlow.")
+                    st.error("Ese correo no está autorizado para controlTesis.")
                 else:
                     needs_setup = auth_service.needs_password_setup(activation_email_clean)
                     ok = auth_service.set_initial_password(
@@ -252,18 +273,7 @@ def logout() -> None:
 
 def render_session_header(user: AuthUser) -> None:
     """Muestra la identidad del usuario activo y opción de cierre de sesión."""
-    st.markdown(
-        """
-<div class="tf-session-heading">
-    <div>
-        <p class="tf-session-eyebrow">Sesión institucional</p>
-        <h2>Control de asesorías TesisFlow</h2>
-    </div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-    info_col, action_col = st.columns([0.7, 0.3])
+    info_col, action_col = st.columns([0.8, 0.2])
     with info_col:
         st.markdown(
             f"""
@@ -275,5 +285,5 @@ def render_session_header(user: AuthUser) -> None:
             unsafe_allow_html=True,
         )
     with action_col:
-        if st.button("Cerrar sesión", key="tf_logout_button", use_container_width=True):
+        if st.button("Cerrar sesión", key="tf_logout_button"):
             logout()

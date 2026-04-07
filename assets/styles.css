@@ -482,3 +482,9 @@ form[id*="tf_reset_form"] .stButton button:active {
   color: rgba(255, 255, 255, 0.75);
   font-size: 0.9rem;
 }
+
+div[data-testid="stButton"][id*="tf_logout_button"] button {
+  padding: 0.35rem 1rem !important;
+  font-size: 0.9rem !important;
+  min-width: 0 !important;
+}

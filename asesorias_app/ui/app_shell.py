@@ -418,32 +418,27 @@ def _render_tabs(service: RegistroService, meta: dict, user: AuthUser) -> None:
 
     with menu_col:
         with st.expander("Menú", expanded=True):
-            st.markdown(
-                """
-<style>
-a.menu-link {
-    color: #f8fafc;
-    text-decoration: none;
-    display: block;
-    padding: 0.3rem 0;
-    font-weight: 600;
-}
-a.menu-link.active {
-    color: #0f172a;
-    border-bottom: 2px solid #c8f560;
-    padding-left: 0;
-}
-</style>
-""",
-                unsafe_allow_html=True,
+            labels = [item["label"] for item in available_menu]
+            keys = [item["key"] for item in available_menu]
+            current_key = st.session_state.get("current_page", default_page)
+            try:
+                current_index = keys.index(current_key)
+            except ValueError:
+                current_index = 0
+            selected_label = st.radio(
+                "Navegación",
+                labels,
+                index=current_index,
+                label_visibility="collapsed",
+                key="menu_radio",
             )
-            for item in available_menu:
-                key = item["key"]
-                label = item["label"]
-                is_active = st.session_state.get("current_page") == key
-                href = f"?page={key}"
-                classes = "menu-link active" if is_active else "menu-link"
-                st.markdown(f'<a class="{classes}" href="{href}" target="_self">{label}</a>', unsafe_allow_html=True)
+            selected_key = keys[labels.index(selected_label)]
+            if selected_key != current_key:
+                st.session_state["current_page"] = selected_key
+                try:
+                    st.query_params.update({"page": selected_key})
+                except Exception:
+                    pass
 
     with content_col:
         current = st.session_state.get("current_page", "register")
