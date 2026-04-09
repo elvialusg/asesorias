@@ -4,24 +4,18 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import secrets
 import time
 from dataclasses import dataclass
 from typing import Dict, Optional, Set
 
-from asesorias_app import config
 from asesorias_app.core.utils import fix_text_encoding
 
-USERS_FILE = config.DATA_DIR / "users.json"
+from .user_sheet_repository import UserSheetRepository
+
 PASSWORD_ITERATIONS = 390_000
 RESET_TOKEN_TTL = 3600  # 1 hora
-DEFAULT_PASSWORD = "ControlTesis2024!"
-ADMIN_EMAIL = "biblio_data@umanizales.edu.co"
 
-# Mapa básico de permisos por rol. Sirve para habilitar características específicas
-# (register, consult, normalizacion, publicacion, dashboard, admin) sin reescribir
-# el servicio cuando aparezcan nuevos módulos.
 ROLE_FEATURES: Dict[str, Set[str]] = {
     "administrador": {"*"},
     "direccion": {"register", "consult", "normalizacion", "publicacion", "dashboard", "admin"},
@@ -44,63 +38,7 @@ class AuthUser:
         return self.role.strip().lower() == "administrador"
 
 
-DEFAULT_USERS = [
-    {
-        "email": "dir_biblioteca@umanizales.edu.co",
-        "name": "Diego Alejandro Soto Herrera",
-        "role": "direccion",
-    },
-    {
-        "email": "referencia@umanizales.edu.co",
-        "name": "José Wilman Tangarife Cardona",
-        "role": "normalizacion",
-    },
-    {
-        "email": "prestamo1@umanizales.edu.co",
-        "name": "Álvaro de Jesús Agudelo López",
-        "role": "normalizacion",
-    },
-    {
-        "email": "referencia2@umanizales.edu.co",
-        "name": "Juan Manuel Ramírez Orozco",
-        "role": "normalizacion",
-    },
-    {
-        "email": "bibliobe@umanizales.edu.co",
-        "name": "Harold García Álvarez",
-        "role": "normalizacion",
-    },
-    {
-        "email": "biblio_publicacion@umanizales.edu.co",
-        "name": "Luz Andrea Sepúlveda Escobar",
-        "role": "publicacion",
-    },
-    {
-        "email": "biblio_servicios@umanizales.edu.co",
-        "name": "María Eugenia Nieto Medina",
-        "role": "servicios",
-    },
-    {
-        "email": "formacion@umanizales.edu.co",
-        "name": "Juan Pablo Charry Osorio",
-        "role": "normalizacion",
-    },
-    {
-        "email": "gescontenidos@umanizales.edu.co",
-        "name": "Gloria Patricia Quintero Serna",
-        "role": "publicacion",
-    },
-    {
-        "email": "aux_gescontenidos@umanizales.edu.co",
-        "name": "Diana Patricia Salazar Martinez",
-        "role": "publicacion",
-    },
-    {
-        "email": ADMIN_EMAIL,
-        "name": "Elvia Lucia Sánchez García",
-        "role": "administrador",
-    },
-]
+_user_repo = UserSheetRepository()
 
 
 def _normalize_email(email: str) -> str:
@@ -113,23 +51,22 @@ def _role_key(role: Optional[str]) -> str:
     return fix_text_encoding(role, strip=True).lower()
 
 
-DEFAULT_USER_EMAILS = {_normalize_email(user["email"]) for user in DEFAULT_USERS}
-DEFAULT_USERS_MAP = {
-    _normalize_email(user["email"]): {
-        "email": _normalize_email(user["email"]),
-        "name": fix_text_encoding(user["name"], strip=True),
-        "role": _role_key(user.get("role")),
-    }
-    for user in DEFAULT_USERS
-}
+def _bool_value(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = (str(value).strip().lower()) if value is not None else ""
+    if not text:
+        return False
+    return text in {"1", "true", "si", "sí", "yes"}
 
 
-def is_authorized_user(email: str) -> bool:
-    normalized = _normalize_email(email)
-    if normalized in DEFAULT_USERS_MAP:
-        return True
-    store = _load_store()
-    return normalized in store
+def _int_value(value) -> Optional[int]:
+    if value in (None, "", "None"):
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def _hash_password(password: str) -> str:
@@ -141,99 +78,79 @@ def _hash_password(password: str) -> str:
 def _verify_password(password: str, stored: str) -> bool:
     try:
         salt_b64, hash_b64 = stored.split(":")
+    except ValueError:
+        return False
+    try:
         salt = base64.b64decode(salt_b64)
         stored_hash = base64.b64decode(hash_b64)
-        new_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PASSWORD_ITERATIONS)
-        return secrets.compare_digest(stored_hash, new_hash)
     except Exception:
         return False
+    new_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PASSWORD_ITERATIONS)
+    return secrets.compare_digest(stored_hash, new_hash)
 
 
 def _load_store() -> Dict[str, dict]:
-    if not USERS_FILE.exists():
-        ensure_default_users()
-    if not USERS_FILE.exists():
-        return {}
-    data = json.loads(USERS_FILE.read_text(encoding="utf-8"))
-    return {record["email"].lower(): record for record in data}
+    rows = _user_repo.load_users()
+    store: Dict[str, dict] = {}
+    for row in rows:
+        email = _normalize_email(row.get("email", ""))
+        if not email:
+            continue
+        name = fix_text_encoding(row.get("name"), strip=True) or ""
+        role = fix_text_encoding(row.get("role"), strip=True) or "colaborador"
+        store[email] = {
+            "email": email,
+            "name": name,
+            "role": role,
+            "password_hash": row.get("password_hash") or "",
+            "must_reset": _bool_value(row.get("must_reset")),
+            "reset_token": row.get("reset_token") or None,
+            "reset_token_expire": _int_value(row.get("reset_token_expire")),
+        }
+    return store
 
 
 def _save_store(store: Dict[str, dict]) -> None:
-    USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    USERS_FILE.write_text(json.dumps(list(store.values()), indent=2, ensure_ascii=False), encoding="utf-8")
-
-
-def ensure_default_users() -> None:
-    USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    existing: Dict[str, dict] = {}
-    if USERS_FILE.exists():
-        try:
-            current_data = json.loads(USERS_FILE.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            current_data = []
-        existing = {
-            _normalize_email(record.get("email", "")): record
-            for record in current_data
-            if record.get("email")
-        }
-    updated = False
-    for user in DEFAULT_USERS:
-        key = _normalize_email(user["email"])
-        name = fix_text_encoding(user["name"], strip=True)
-        role = _role_key(user.get("role"))
-        if key not in existing:
-            existing[key] = {
-                "email": key,
-                "name": name,
-                "role": role,
-                "password_hash": _hash_password(DEFAULT_PASSWORD),
-                "must_reset": True,
-                "reset_token": None,
-                "reset_token_expire": None,
+    records = []
+    for record in store.values():
+        records.append(
+            {
+                "email": record["email"],
+                "name": record.get("name", ""),
+                "role": record.get("role", "colaborador"),
+                "password_hash": record.get("password_hash", ""),
+                "must_reset": record.get("must_reset", False),
+                "reset_token": record.get("reset_token") or "",
+                "reset_token_expire": record.get("reset_token_expire") or "",
             }
-            updated = True
-        else:
-            current = existing[key]
-            cleaned_name = fix_text_encoding(current.get("name") or name, strip=True)
-            if cleaned_name != current.get("name"):
-                current["name"] = cleaned_name
-                updated = True
-            if _role_key(current.get("role")) != role:
-                current["role"] = role
-                updated = True
-    if not USERS_FILE.exists() or updated:
-        USERS_FILE.write_text(json.dumps(list(existing.values()), indent=2, ensure_ascii=False), encoding="utf-8")
+        )
+    records.sort(key=lambda item: item["email"])
+    _user_repo.save_users(records)
 
 
 def ensure_user_record(email: str) -> bool:
-    normalized = _normalize_email(email)
-    template = DEFAULT_USERS_MAP.get(normalized)
-    if not template:
-        return False
     store = _load_store()
-    if normalized not in store:
-        store[normalized] = {
-            "email": normalized,
-            "name": template["name"],
-            "role": template["role"],
-            "password_hash": _hash_password(DEFAULT_PASSWORD),
-            "must_reset": True,
-            "reset_token": None,
-            "reset_token_expire": None,
-        }
-        _save_store(store)
-    return True
+    return _normalize_email(email) in store
 
 
 def authenticate(email: str, password: str) -> Optional[AuthUser]:
     store = _load_store()
     user = store.get(_normalize_email(email))
-    if not user or not _verify_password(password, user["password_hash"]):
+    if not user:
+        return None
+    stored_hash = user.get("password_hash") or ""
+    if ":" not in stored_hash:
+        if not secrets.compare_digest(stored_hash, password):
+            return None
+        user["password_hash"] = _hash_password(password)
+        user["must_reset"] = False
+        _save_store(store)
+    elif not _verify_password(password, stored_hash):
         return None
     return AuthUser(
         email=user["email"],
         name=user["name"],
-        role=_role_key(user.get("role")),
+        role=user["role"],
         must_reset=bool(user.get("must_reset")),
     )
 
@@ -271,7 +188,8 @@ def reset_password(email: str, token: str, new_password: str) -> bool:
         return False
     if user.get("reset_token") != token.upper():
         return False
-    if user.get("reset_token_expire") and int(time.time()) > user["reset_token_expire"]:
+    expire = user.get("reset_token_expire")
+    if expire and int(time.time()) > int(expire):
         return False
     user["password_hash"] = _hash_password(new_password)
     user["reset_token"] = None
@@ -301,7 +219,11 @@ def can_access_feature(user: AuthUser, feature: str) -> bool:
 def needs_password_setup(email: str) -> bool:
     store = _load_store()
     user = store.get(_normalize_email(email))
-    return bool(user and user.get("must_reset"))
+    if not user:
+        return False
+    if not user.get("password_hash"):
+        return True
+    return bool(user.get("must_reset"))
 
 
 def set_initial_password(email: str, new_password: str, *, force: bool = False) -> bool:
@@ -311,8 +233,6 @@ def set_initial_password(email: str, new_password: str, *, force: bool = False) 
     if not user:
         return False
     if not user.get("must_reset") and not force:
-        return False
-    if force and key not in DEFAULT_USER_EMAILS:
         return False
     user["password_hash"] = _hash_password(new_password)
     user["must_reset"] = False
