@@ -139,14 +139,22 @@ def authenticate(email: str, password: str) -> Optional[AuthUser]:
     if not user:
         return None
     stored_hash = user.get("password_hash") or ""
+    updated = False
     if ":" not in stored_hash:
         if not secrets.compare_digest(stored_hash, password):
             return None
         user["password_hash"] = _hash_password(password)
         user["must_reset"] = False
-        _save_store(store)
+        updated = True
     elif not _verify_password(password, stored_hash):
-        return None
+        if password == stored_hash:
+            user["password_hash"] = _hash_password(password)
+            user["must_reset"] = False
+            updated = True
+        else:
+            return None
+    if updated:
+        _save_store(store)
     return AuthUser(
         email=user["email"],
         name=user["name"],
