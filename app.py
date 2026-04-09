@@ -57,7 +57,6 @@ def configure_google_credentials() -> None:
 
 def main():
     configure_google_credentials()
-    auth_service.ensure_default_users()
     render_app()
 
 

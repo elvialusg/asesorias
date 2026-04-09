@@ -497,3 +497,30 @@ div[data-testid="stButton"][id*="tf_logout_button"] button {
   font-weight: 600;
   color: var(--text-light);
 }
+
+.tf-link {
+  color: var(--text-light) !important;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
+  margin: 0;
+}
+
+div[data-testid="stButton"][id*="link_activate"] button,
+div[data-testid="stButton"][id*="link_recover"] button {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  color: var(--text-light) !important;
+  text-decoration: underline !important;
+  text-underline-offset: 0.2rem !important;
+  box-shadow: none !important;
+}
+
+div[data-testid="stButton"][id*="link_activate"] button:hover,
+div[data-testid="stButton"][id*="link_recover"] button:hover {
+  color: var(--accent) !important;
+}

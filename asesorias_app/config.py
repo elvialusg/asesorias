@@ -30,6 +30,7 @@ GOOGLE_SHEETS_SPREADSHEET_ID = os.environ.get("GOOGLE_SHEETS_SPREADSHEET_ID", ""
 GOOGLE_SHEETS_REGISTRO_RANGE = os.environ.get(
     "GOOGLE_SHEETS_REGISTRO_RANGE", f"{SHEET_REGISTRO}!A:ZZ"
 )
+GOOGLE_SHEETS_USERS_RANGE = os.environ.get("GOOGLE_SHEETS_USERS_RANGE", "User!A:ZZ")
 GOOGLE_SHEETS_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
