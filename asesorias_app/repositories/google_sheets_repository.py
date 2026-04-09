@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Optional
 
 import pandas as pd
 from google.oauth2 import service_account
@@ -12,6 +12,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from asesorias_app import config
+from asesorias_app.core.utils import clean_text_dataframe, fix_text_encoding
 from asesorias_app.repositories.excel_repository import ExcelRepository, normalize_registro_df
 
 
@@ -23,11 +24,13 @@ class GoogleSheetsRepository(ExcelRepository):
         spreadsheet_id: str | None = None,
         credentials_file: Path | None = None,
         registro_range: str | None = None,
+        faculties_range: str | None = None,
     ) -> None:
         super().__init__()
         self.spreadsheet_id = (spreadsheet_id or config.GOOGLE_SHEETS_SPREADSHEET_ID).strip()
         self.credentials_file = Path(credentials_file or config.SERVICE_ACCOUNT_FILE)
         self.registro_range = registro_range or config.GOOGLE_SHEETS_REGISTRO_RANGE
+        self.faculties_range = faculties_range or config.GOOGLE_SHEETS_FACULTIES_RANGE
         if not self.spreadsheet_id:
             raise ValueError("GOOGLE_SHEETS_SPREADSHEET_ID no está configurado.")
 
@@ -99,6 +102,57 @@ class GoogleSheetsRepository(ExcelRepository):
     def download_current_excel_bytes(self) -> bytes:
         return super().download_current_excel_bytes()
 
+    def load_lists(self) -> dict:
+        base = super().load_lists()
+        if not self.faculties_range:
+            return base
+        service = self._sheets_service()
+        try:
+            result = (
+                service.spreadsheets()
+                .values()
+                .get(spreadsheetId=self.spreadsheet_id, range=self.faculties_range)
+                .execute()
+            )
+        except HttpError:
+            return base
+        rows = result.get("values", [])
+        if not rows:
+            return base
+        headers = [fix_text_encoding(str(header), strip=True) for header in rows[0]]
+        normalized_rows: List[List[str]] = []
+        for row in rows[1:]:
+            normalized_rows.append(row + [""] * (len(headers) - len(row)))
+        df_um = pd.DataFrame(normalized_rows, columns=headers)
+        df_um = clean_text_dataframe(df_um)
+        fac_name_col = self._match_column(df_um.columns.tolist(), ["Nombre_Facultad", "Facultad"])
+        fac_code_col = self._match_column(
+            df_um.columns.tolist(),
+            ["Codigo_Facultad", "Código_Facultad", "Codigo Facultad"],
+        )
+        prog_name_col = self._match_column(df_um.columns.tolist(), ["Nombre_Programa", "Programa"])
+        if not fac_name_col or not fac_code_col or not prog_name_col:
+            return base
+        df_fac = (
+            df_um[[fac_code_col, fac_name_col]]
+            .dropna(how="all")
+            .drop_duplicates()
+            .rename(columns={fac_name_col: "Nombre_Facultad", fac_code_col: "Codigo_Facultad"})
+            .reset_index(drop=True)
+        )
+        df_fac["Codigo_Facultad"] = pd.to_numeric(df_fac["Codigo_Facultad"], errors="ignore")
+        df_prog = (
+            df_um[[fac_code_col, prog_name_col]]
+            .dropna(subset=[prog_name_col])
+            .drop_duplicates()
+            .rename(columns={fac_code_col: "Codigo_Facultad", prog_name_col: "Nombre_Programa"})
+            .reset_index(drop=True)
+        )
+        df_prog["Codigo_Facultad"] = pd.to_numeric(df_prog["Codigo_Facultad"], errors="ignore")
+        base["df_fac"] = df_fac
+        base["df_prog"] = df_prog
+        return base
+
     # Helpers ------------------------------------------------------------
     @staticmethod
     def _format_value(value) -> str:
@@ -113,3 +167,23 @@ class GoogleSheetsRepository(ExcelRepository):
         if isinstance(value, float) and pd.isna(value):
             return ""
         return str(value)
+
+    @staticmethod
+    def _match_column(columns: List[str], candidates: List[str]) -> Optional[str]:
+        normalized = {col.lower(): col for col in columns}
+        for candidate in candidates:
+            cand = candidate.lower()
+            if cand in normalized:
+                return normalized[cand]
+        simplified = {col.lower().replace(" ", "").replace("_", ""): col for col in columns}
+        for candidate in candidates:
+            cand = candidate.lower().replace(" ", "").replace("_", "")
+            if cand in simplified:
+                return simplified[cand]
+        for col in columns:
+            lower = col.lower()
+            for candidate in candidates:
+                cand = candidate.lower()
+                if cand in lower:
+                    return col
+        return None
