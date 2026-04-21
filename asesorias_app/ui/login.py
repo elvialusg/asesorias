@@ -136,3 +136,16 @@ def render_session_header(user: AuthUser) -> None:
     with action_col:
         if st.button("Cerrar sesion", key="tf_logout_button"):
             logout()
+
+
+def render_session_footer(user: AuthUser) -> None:
+    """Muestra el rol del usuario al final de la aplicacion."""
+    st.markdown(
+        f"""
+<div class="tf-user-footer">
+    <span class="tf-user-footer__label">Rol actual:</span>
+    <span class="tf-user-footer__value">{user.role.title()}</span>
+</div>
+""",
+        unsafe_allow_html=True,
+    )

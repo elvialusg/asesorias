@@ -37,7 +37,6 @@ DASHBOARD_TEXT_COLOR = "#0d1f17"
 DASHBOARD_GREEN_PALETTE = ["#186f65", "#2f8f83", "#48b19b", "#73d6b8", "#a3e6c9", "#d6f7e7"]
 BUTTON_STYLE_STATE_KEY = "_button_styles_applied"
 ADD_BUTTON_STYLE_STATE_KEY = "_add_student_button_style"
-SIDEBAR_MENU_STYLE_STATE_KEY = "_sidebar_menu_style"
 
 
 def _style_dashboard_chart(chart):
@@ -130,9 +129,6 @@ div[data-testid="baseButton-secondary"][id*="btn_add_extra_student"] button {
 
 
 def _inject_sidebar_menu_styles() -> None:
-    if st.session_state.get(SIDEBAR_MENU_STYLE_STATE_KEY):
-        return
-    st.session_state[SIDEBAR_MENU_STYLE_STATE_KEY] = True
     st.markdown(
         """
 <style>
@@ -152,10 +148,19 @@ div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"]
 }
 div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"] > div:last-child {
     color: #ffffff !important;
-    font-size: 1.22rem !important;
+    font-size: 1.28rem !important;
     font-weight: 700 !important;
     line-height: 1.35;
     letter-spacing: 0.01em;
+}
+div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"] p,
+div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"] span,
+div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"] div[data-testid="stMarkdownContainer"] p {
+    color: #ffffff !important;
+    font-size: 1.28rem !important;
+    font-weight: 700 !important;
+    line-height: 1.35 !important;
+    margin: 0 !important;
 }
 div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"][aria-checked="true"] {
     background: transparent !important;
@@ -172,6 +177,12 @@ div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"]
     background: #d6f7e7;
 }
 div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"][aria-checked="true"] > div:last-child {
+    color: #d6f7e7 !important;
+    font-weight: 800 !important;
+}
+div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"][aria-checked="true"] p,
+div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"][aria-checked="true"] span,
+div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"][aria-checked="true"] div[data-testid="stMarkdownContainer"] p {
     color: #d6f7e7 !important;
     font-weight: 800 !important;
 }
@@ -504,6 +515,8 @@ def _render_tabs(service: RegistroService, meta: dict, user: AuthUser) -> None:
             _tab_publicacion_v3(content_col, service, meta)
         elif current == "dashboard":
             _tab_dashboard(content_col, service, meta)
+
+    login_ui.render_session_footer(user)
 
 
 def _tab_registro(tab, service: RegistroService, meta: dict):

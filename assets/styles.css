@@ -496,6 +496,24 @@ form[id*="tf_reset_form"] .stButton button:active {
   font-size: 0.9rem;
 }
 
+.tf-user-footer {
+  margin-top: 1.5rem;
+  padding-top: 0.75rem;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+.tf-user-footer__label {
+  color: rgba(255, 255, 255, 0.68);
+  margin-right: 0.35rem;
+}
+
+.tf-user-footer__value {
+  color: #ffffff;
+  font-weight: 700;
+}
+
 div[data-testid="stButton"][id*="tf_logout_button"] button {
   padding: 0.35rem 1rem !important;
   font-size: 0.9rem !important;
