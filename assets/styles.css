@@ -464,23 +464,57 @@ form[id*="tf_reset_form"] .stButton button:active {
   color: var(--text-light);
 }
 
+.tf-page-title {
+  margin: 0 0 1rem;
+  padding: 0;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #f8fafc;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.015em;
+  text-align: center;
+}
+
 .tf-user-id {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  padding: 1rem 1.25rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 15px 35px rgba(7, 16, 19, 0.45);
+  background: transparent;
+  border-radius: 0;
+  padding: 0.15rem 0;
+  border: none;
+  box-shadow: none;
 }
 
 .tf-user-name {
   font-size: 1.1rem;
   font-weight: 700;
-  margin-bottom: 0.15rem;
+  margin-bottom: 0.1rem;
 }
 
 .tf-user-meta {
   color: rgba(255, 255, 255, 0.75);
   font-size: 0.9rem;
+}
+
+.tf-user-footer {
+  margin-top: 1.5rem;
+  padding-top: 0.75rem;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+.tf-user-footer__name {
+  color: #ffffff;
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 0.15rem;
+}
+
+.tf-user-footer__meta {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.95rem;
+  font-weight: 500;
 }
 
 div[data-testid="stButton"][id*="tf_logout_button"] button {

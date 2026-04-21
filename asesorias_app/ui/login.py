@@ -122,17 +122,20 @@ def logout() -> None:
 
 def render_session_header(user: AuthUser) -> None:
     """Muestra la identidad del usuario activo y opcion de cierre de sesion."""
-    info_col, action_col = st.columns([0.8, 0.2])
-    with info_col:
-        st.markdown(
-            f"""
-<div class="tf-user-id">
-    <div class="tf-user-name">{user.name}</div>
-    <div class="tf-user-meta">{user.email} · {user.role.title()}</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
+    _, action_col = st.columns([0.8, 0.2])
     with action_col:
         if st.button("Cerrar sesion", key="tf_logout_button"):
             logout()
+
+
+def render_session_footer(user: AuthUser) -> None:
+    """Muestra los datos del usuario al final de la aplicacion."""
+    st.markdown(
+        f"""
+<div class="tf-user-footer">
+    <div class="tf-user-footer__name">{user.name}</div>
+    <div class="tf-user-footer__meta">{user.email} · {user.role.title()}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
