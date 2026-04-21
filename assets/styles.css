@@ -3,6 +3,8 @@
   --primary-dark: #09353a;
   --accent: #bde94d;
   --accent-dark: #9ac629;
+  --button-bg: #186f65;
+  --button-bg-dark: #0f5760;
   --text-light: #f5f7fb;
   --muted: #94a3b8;
   --card-bg: rgba(255, 255, 255, 0.97);
@@ -66,8 +68,8 @@
   padding: 0.6rem 1.5rem !important;
   font-weight: 600 !important;
 
-  background: var(--accent) !important;
-  color: #0a1b1e !important;
+  background: linear-gradient(135deg, var(--button-bg), var(--button-bg-dark)) !important;
+  color: #ffffff !important;
   border: none !important;
 
   box-shadow: none !important;
@@ -187,9 +189,9 @@ div[data-testid="stExpander"] .streamlit-expanderHeader span {
 .stDownloadButton button:hover,
 .stDownloadButton button:focus,
 .stDownloadButton button:active {
-  background: var(--accent) !important;
+  background: linear-gradient(135deg, var(--button-bg), var(--button-bg-dark)) !important;
   border: none !important;
-  color: #0a1b1e !important;
+  color: #ffffff !important;
   font-weight: 600 !important;
   border-radius: 12px !important;
   box-shadow: none !important;
