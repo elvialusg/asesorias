@@ -37,6 +37,7 @@ DASHBOARD_TEXT_COLOR = "#0d1f17"
 DASHBOARD_GREEN_PALETTE = ["#186f65", "#2f8f83", "#48b19b", "#73d6b8", "#a3e6c9", "#d6f7e7"]
 BUTTON_STYLE_STATE_KEY = "_button_styles_applied"
 ADD_BUTTON_STYLE_STATE_KEY = "_add_student_button_style"
+SIDEBAR_MENU_STYLE_STATE_KEY = "_sidebar_menu_style"
 
 
 def _style_dashboard_chart(chart):
@@ -121,6 +122,66 @@ div[data-testid="baseButton-secondary"][id*="btn_add_extra_student"] button {
     align-items: center;
     justify-content: center;
     border-radius: 0.75rem;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def _inject_sidebar_menu_styles() -> None:
+    if st.session_state.get(SIDEBAR_MENU_STYLE_STATE_KEY):
+        return
+    st.session_state[SIDEBAR_MENU_STYLE_STATE_KEY] = True
+    st.markdown(
+        """
+<style>
+div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"] {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0.45rem 0.2rem 0.45rem 0.9rem;
+    margin-bottom: 0.45rem;
+    box-shadow: none !important;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    position: relative;
+}
+div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"]:hover {
+    opacity: 0.92;
+    transform: translateY(-1px);
+}
+div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"] > div:last-child {
+    color: #ffffff !important;
+    font-size: 1.22rem !important;
+    font-weight: 700 !important;
+    line-height: 1.35;
+    letter-spacing: 0.01em;
+}
+div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"][aria-checked="true"] {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"][aria-checked="true"]::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.35rem;
+    bottom: 0.35rem;
+    width: 4px;
+    border-radius: 999px;
+    background: #d6f7e7;
+}
+div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"][aria-checked="true"] > div:last-child {
+    color: #d6f7e7 !important;
+    font-weight: 800 !important;
+}
+div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"] div[aria-hidden="true"] {
+    border-color: rgba(255, 255, 255, 0.92) !important;
+    background-color: transparent !important;
+}
+div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"][aria-checked="true"] div[aria-hidden="true"] {
+    border-color: #d6f7e7 !important;
+    background-color: #d6f7e7 !important;
 }
 </style>
 """,
@@ -377,17 +438,7 @@ def _render_tabs(service: RegistroService, meta: dict, user: AuthUser) -> None:
 
     st.markdown(
         """
-<div style="
-    background-color: #0f172a;
-    color: #f8fafc;
-    padding: 1rem 1.5rem;
-    border-radius: 0.6rem;
-    font-size: 1.35rem;
-    font-weight: 700;
-    letter-spacing: 0.015em;
-    text-align: center;
-    margin-bottom: 1rem;
-">
+<div class="tf-page-title">
     Registro y seguimiento de tesis
 </div>
 """,
@@ -417,6 +468,7 @@ def _render_tabs(service: RegistroService, meta: dict, user: AuthUser) -> None:
     st.session_state["current_page"] = current_page
 
     with menu_col:
+        _inject_sidebar_menu_styles()
         with st.expander("Menú", expanded=True):
             labels = [item["label"] for item in available_menu]
             keys = [item["key"] for item in available_menu]
