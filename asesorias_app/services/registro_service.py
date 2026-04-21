@@ -482,29 +482,119 @@ class RegistroService:
             df_target = df_target[state != done_value]
         return df_target
 
+    @staticmethod
+    def _publication_text(value) -> str:
+        if value is None:
+            return ""
+        try:
+            if pd.isna(value):
+                return ""
+        except TypeError:
+            pass
+        if isinstance(value, str):
+            repaired = fix_text_encoding(value, strip=False)
+            return repaired if repaired is not None else ""
+        return str(value)
+
+    @classmethod
+    def _first_non_empty(cls, series: pd.Series) -> str:
+        for value in series.tolist():
+            text = cls._publication_text(value)
+            if text:
+                return text
+        return ""
+
+    @classmethod
+    def _unique_publication_texts(cls, values: List) -> List[str]:
+        unique: List[str] = []
+        seen = set()
+        for value in values:
+            text = cls._publication_text(value)
+            if not text or text in seen:
+                continue
+            unique.append(text)
+            seen.add(text)
+        return unique
+
+    def build_publicacion_tesis_dataframe(
+        self,
+        responsable: Optional[str] = None,
+        *,
+        include_all_for_primary: bool = False,
+        only_pending: bool = False,
+    ) -> pd.DataFrame:
+        df_resp = self.get_publicacion_registros(
+            responsable,
+            include_all_for_primary=include_all_for_primary,
+            only_pending=only_pending,
+        )
+        if df_resp.empty:
+            return pd.DataFrame()
+
+        thesis_col = self._tesis_column(df_resp)
+        if not thesis_col:
+            raise RuntimeError("No se encontro la columna de titulo de tesis para publicacion.")
+
+        assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
+        state_col = config.PUBLICATION_STATUS_COLUMN
+        obs_col = config.PUBLICATION_OBS_COLUMN
+        pub_by_col = config.PUBLICATION_PUBLISHED_BY_COLUMN
+        date_col = config.PUBLICATION_DATE_COLUMN
+        done_value = (config.PUBLICATION_DONE_VALUE or "Publicado").upper()
+
+        grouped_rows: List[Dict] = []
+        for group in self._build_tesis_groups(df_resp, thesis_col):
+            group_df = df_resp.loc[group["indices"]].copy()
+            states = group_df[state_col].fillna("").astype(str).str.upper()
+            unique_obs = self._unique_publication_texts(group_df[obs_col].tolist())
+            grouped_rows.append(
+                {
+                    "ID": group["tesis"],
+                    "Tesis": group["tesis"],
+                    "Estudiantes": group["students"],
+                    "Asignado": self._first_non_empty(group_df[assignment_col]),
+                    "Publicado": bool(len(states) and states.eq(done_value).all()),
+                    "Observacion": " | ".join(unique_obs),
+                    "Publicado_por": self._first_non_empty(group_df[pub_by_col]),
+                    "Fecha_Publicacion": self._first_non_empty(group_df[date_col].astype(str)),
+                }
+            )
+        return pd.DataFrame(grouped_rows)
+
     def build_publicacion_excel(
         self, responsable: Optional[str], include_all_for_primary: bool = False
     ) -> bytes:
-        df_resp = self.get_publicacion_registros(
+        tesis_df = self.build_publicacion_tesis_dataframe(
             responsable, include_all_for_primary=include_all_for_primary
         )
-        if df_resp.empty:
+        if tesis_df.empty:
             raise ValueError("No hay registros de publicacion para descargar con este filtro")
-        columns = ["Nombre_Usuario"]
-        ced_col = self._cedula_column(df_resp)
-        if ced_col:
-            columns.append(ced_col)
-        columns += [
+        export_df = tesis_df.rename(
+            columns={
+                "Tesis": "Titulo_Trabajo_Grado",
+                "Estudiantes": "Total_Estudiantes",
+                "Asignado": config.PUBLICATION_ASSIGNMENT_COLUMN,
+                "Publicado": config.PUBLICATION_STATUS_COLUMN,
+                "Observacion": config.PUBLICATION_OBS_COLUMN,
+                "Publicado_por": config.PUBLICATION_PUBLISHED_BY_COLUMN,
+                "Fecha_Publicacion": config.PUBLICATION_DATE_COLUMN,
+            }
+        ).copy()
+        export_df[config.PUBLICATION_STATUS_COLUMN] = export_df[config.PUBLICATION_STATUS_COLUMN].map(
+            lambda marked: config.PUBLICATION_DONE_VALUE if marked else config.PUBLICATION_PENDING_VALUE
+        )
+        columns = [
+            "Titulo_Trabajo_Grado",
+            "Total_Estudiantes",
             config.PUBLICATION_ASSIGNMENT_COLUMN,
             config.PUBLICATION_STATUS_COLUMN,
             config.PUBLICATION_OBS_COLUMN,
             config.PUBLICATION_PUBLISHED_BY_COLUMN,
             config.PUBLICATION_DATE_COLUMN,
         ]
-        columns = [col for col in columns if col in df_resp.columns]
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-            df_resp[columns].to_excel(writer, index=False, sheet_name="Publicacion")
+            export_df[columns].to_excel(writer, index=False, sheet_name="Publicacion")
         buffer.seek(0)
         return buffer.read()
 
@@ -523,40 +613,47 @@ class RegistroService:
         pub_by_col = config.PUBLICATION_PUBLISHED_BY_COLUMN
         date_col = config.PUBLICATION_DATE_COLUMN
         obs_col = config.PUBLICATION_OBS_COLUMN
-        allowed_ids = {str(idx) for idx in ready_df.index}
-        index_lookup = {str(idx): idx for idx in df_all.index}
+        thesis_col = self._tesis_column(ready_df)
+        if not thesis_col:
+            raise RuntimeError("No se encontro la columna de titulo de tesis para publicacion.")
+        thesis_groups = {
+            group["tesis"]: group["indices"] for group in self._build_tesis_groups(ready_df, thesis_col)
+        }
         normalized_ids = [norm_str(i) for i in ids if norm_str(i)]
         updated = 0
-        for uid in normalized_ids:
-            if uid not in allowed_ids:
+        for tesis_id in normalized_ids:
+            group_indices = thesis_groups.get(tesis_id)
+            if not group_indices:
                 continue
-            idx = index_lookup.get(uid)
-            if idx is None:
-                continue
-            df_all.at[idx, assignment_col] = target
-            df_all.at[idx, state_col] = config.PUBLICATION_PENDING_VALUE
-            df_all.at[idx, pub_by_col] = ""
-            df_all.at[idx, date_col] = ""
-            if pd.isna(df_all.at[idx, obs_col]):
-                df_all.at[idx, obs_col] = ""
-            updated += 1
+            for idx in group_indices:
+                df_all.at[idx, assignment_col] = target
+                df_all.at[idx, state_col] = config.PUBLICATION_PENDING_VALUE
+                df_all.at[idx, pub_by_col] = ""
+                df_all.at[idx, date_col] = ""
+                if pd.isna(df_all.at[idx, obs_col]):
+                    df_all.at[idx, obs_col] = ""
+                updated += 1
         if updated:
             self.save_registro(df_all)
         return updated
 
     def summarize_publicacion(self, df: pd.DataFrame) -> Dict:
-        state_col = config.PUBLICATION_STATUS_COLUMN
-        assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
-        done_value = (config.PUBLICATION_DONE_VALUE or "Publicado").upper()
-        state = df[state_col].fillna("").astype(str).str.upper() if state_col in df.columns else pd.Series(dtype=str)
-        total = int(len(df))
-        published = int((state == done_value).sum())
+        if df.empty:
+            assigned = {resp: 0 for resp in config.PUBLICATION_RESPONSIBLES}
+            return {"total": 0, "published": 0, "pending": 0, "assigned": assigned}
+        if "Tesis" in df.columns and "Asignado" in df.columns and "Publicado" in df.columns:
+            tesis_df = df.copy()
+        else:
+            tesis_df = self.build_publicacion_tesis_dataframe_from_rows(df)
+        assignment_col = "Asignado"
+        total = int(len(tesis_df))
+        published = int(tesis_df["Publicado"].fillna(False).astype(bool).sum())
         pending = total - published
         assigned: Dict[str, int] = {}
         for resp in config.PUBLICATION_RESPONSIBLES:
             assigned[resp] = int(
                 (
-                    df[assignment_col]
+                    tesis_df[assignment_col]
                     .fillna("")
                     .astype(str)
                     .str.lower()
@@ -565,6 +662,31 @@ class RegistroService:
             )
         return {"total": total, "published": published, "pending": pending, "assigned": assigned}
 
+    def build_publicacion_tesis_dataframe_from_rows(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return pd.DataFrame()
+        thesis_col = self._tesis_column(df)
+        if not thesis_col:
+            raise RuntimeError("No se encontro la columna de titulo de tesis para publicacion.")
+        assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
+        state_col = config.PUBLICATION_STATUS_COLUMN
+        obs_col = config.PUBLICATION_OBS_COLUMN
+        done_value = (config.PUBLICATION_DONE_VALUE or "Publicado").upper()
+        grouped_rows: List[Dict] = []
+        for group in self._build_tesis_groups(df, thesis_col):
+            group_df = df.loc[group["indices"]]
+            grouped_rows.append(
+                {
+                    "ID": group["tesis"],
+                    "Tesis": group["tesis"],
+                    "Estudiantes": group["students"],
+                    "Asignado": self._first_non_empty(group_df[assignment_col]),
+                    "Publicado": group_df[state_col].fillna("").astype(str).str.upper().eq(done_value).all(),
+                    "Observacion": " | ".join(self._unique_publication_texts(group_df[obs_col].tolist())),
+                }
+            )
+        return pd.DataFrame(grouped_rows)
+
     def update_publicacion_estado(self, responsable: str, updates: List[Dict]) -> Dict:
         df_all, ready_df = self._load_registro_for_publicacion()
         assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
@@ -572,50 +694,58 @@ class RegistroService:
         pub_by_col = config.PUBLICATION_PUBLISHED_BY_COLUMN
         date_col = config.PUBLICATION_DATE_COLUMN
         obs_col = config.PUBLICATION_OBS_COLUMN
+        thesis_col = self._tesis_column(ready_df)
+        if not thesis_col:
+            raise RuntimeError("No se encontro la columna de titulo de tesis para publicacion.")
         target_norm = (norm_str(responsable) or "").lower()
-        allowed = {str(idx) for idx in ready_df.index}
-        index_lookup = {str(idx): idx for idx in df_all.index}
+        thesis_groups = {
+            group["tesis"]: group["indices"] for group in self._build_tesis_groups(ready_df, thesis_col)
+        }
         updated = 0
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         done_value = config.PUBLICATION_DONE_VALUE
         pending_value = config.PUBLICATION_PENDING_VALUE
         for item in updates:
-            uid = norm_str(item.get("id"))
-            if not uid or uid not in allowed:
+            tesis_id = norm_str(item.get("id"))
+            group_indices = thesis_groups.get(tesis_id or "")
+            if not group_indices:
                 continue
-            idx = index_lookup.get(uid)
-            if idx is None:
-                continue
-            assigned = (norm_str(df_all.at[idx, assignment_col]) or "").lower()
+            first_idx = group_indices[0]
+            assigned = (norm_str(df_all.at[first_idx, assignment_col]) or "").lower()
             if assigned != target_norm:
                 continue
             marked = bool(item.get("ok"))
             obs_text = norm_str(item.get("observacion")) or ""
-            changed = False
             new_status = done_value if marked else pending_value
-            if str(df_all.at[idx, state_col]) != new_status:
-                df_all.at[idx, state_col] = new_status
-                changed = True
-            if str(df_all.at[idx, obs_col]) != obs_text:
-                df_all.at[idx, obs_col] = obs_text
-                changed = True
-            if marked:
-                if str(df_all.at[idx, pub_by_col]) != responsable:
-                    df_all.at[idx, pub_by_col] = responsable
+            group_changed = False
+            for idx in group_indices:
+                changed = False
+                if str(df_all.at[idx, state_col]) != new_status:
+                    df_all.at[idx, state_col] = new_status
                     changed = True
-                df_all.at[idx, date_col] = timestamp
-            else:
-                if str(df_all.at[idx, pub_by_col]):
-                    df_all.at[idx, pub_by_col] = ""
+                if str(df_all.at[idx, obs_col]) != obs_text:
+                    df_all.at[idx, obs_col] = obs_text
                     changed = True
-                if str(df_all.at[idx, date_col]):
-                    df_all.at[idx, date_col] = ""
-                    changed = True
-            if changed:
+                if marked:
+                    if str(df_all.at[idx, pub_by_col]) != responsable:
+                        df_all.at[idx, pub_by_col] = responsable
+                        changed = True
+                    if str(df_all.at[idx, date_col]) != timestamp:
+                        df_all.at[idx, date_col] = timestamp
+                        changed = True
+                else:
+                    if str(df_all.at[idx, pub_by_col]):
+                        df_all.at[idx, pub_by_col] = ""
+                        changed = True
+                    if str(df_all.at[idx, date_col]):
+                        df_all.at[idx, date_col] = ""
+                        changed = True
+                group_changed = group_changed or changed
+            if group_changed:
                 updated += 1
         if updated:
             self.save_registro(df_all)
-        resumen = self.get_publicacion_registros(responsable)
+        resumen = self.build_publicacion_tesis_dataframe(responsable)
         summary = self.summarize_publicacion(resumen)
         summary["updated"] = updated
         return summary

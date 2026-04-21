@@ -1,4 +1,4 @@
-"""Pantalla de login y barra de sesión para controlTesis."""
+"""Pantalla de login y barra de sesion para controlTesis."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ SESSION_USER_KEY = "tf_auth_user"
 SESSION_LAST_ACTIVE_KEY = "tf_auth_last_active"
 SESSION_TIMEOUT_SECONDS = 3600
 LOGIN_ERROR_KEY = "_tf_login_error"
-SUPPORT_EMAIL = "biblio_data@umanizales.edu.co"
 
 
 def get_current_user() -> Optional[AuthUser]:
@@ -61,23 +60,13 @@ def _streamlit_rerun() -> None:
 
 
 def render_login_page() -> None:
-    """Dibuja la pantalla de inicio de sesión institucional."""
+    """Dibuja una pantalla de inicio de sesion simple."""
     st.session_state.setdefault("login_email", "")
     st.session_state.setdefault("login_password", "")
     st.session_state.setdefault("login_password_reset", False)
-    st.session_state.setdefault("login_mode", "login")
-    st.session_state.setdefault("login_activation_email", "")
-    st.session_state.setdefault("login_activation_password", "")
-    st.session_state.setdefault("login_activation_confirm", "")
-    st.session_state.setdefault("login_activation_reset", False)
     if st.session_state.get("login_password_reset"):
         st.session_state["login_password"] = ""
         st.session_state["login_password_reset"] = False
-    if st.session_state.get("login_activation_reset"):
-        st.session_state["login_activation_email"] = ""
-        st.session_state["login_activation_password"] = ""
-        st.session_state["login_activation_confirm"] = ""
-        st.session_state["login_activation_reset"] = False
 
     st.markdown(
         """
@@ -93,105 +82,28 @@ def render_login_page() -> None:
     submitted_login = False
     _, center_col, _ = st.columns([1, 2, 1])
     with center_col:
-        if st.session_state["login_mode"] == "login":
-            with st.form("tf_login_form", border=False, clear_on_submit=False):
-                email = st.text_input(
-                    "Correo institucional",
-                    key="login_email",
-                    placeholder="usuario@umanizales.edu.co",
-                )
-                password = st.text_input(
-                    "Contraseña",
-                    key="login_password",
-                    type="password",
-                    placeholder="Contraseña",
-                )
-                submitted_login = st.form_submit_button("Iniciar sesión", use_container_width=True)
-            cols = st.columns(2)
-            can_show_activation = auth_service.needs_password_setup(email or "")
-            with cols[0]:
-                if can_show_activation:
-                    if st.button("Activar contraseña", key="link_activate", type="secondary"):
-                        st.session_state["login_mode"] = "activation"
-                        _streamlit_rerun()
-                else:
-                    st.markdown("")
-            with cols[1]:
-                if st.button("Olvidé mi contraseña", key="link_recover", type="secondary"):
-                    st.session_state["login_mode"] = "recovery"
-                    _streamlit_rerun()
-        elif st.session_state["login_mode"] in {"activation", "recovery"}:
-            mode_title = "Registrar contraseña" if st.session_state["login_mode"] == "activation" else "Actualizar contraseña"
-            with st.form("tf_activation_form", border=False, clear_on_submit=False):
-                act_email = st.text_input(
-                    "Correo institucional",
-                    key="login_activation_email",
-                    placeholder="usuario@umanizales.edu.co",
-                )
-                act_password = st.text_input(
-                    "Nueva contraseña",
-                    key="login_activation_password",
-                    type="password",
-                )
-                act_confirm = st.text_input(
-                    "Confirma la contraseña",
-                    key="login_activation_confirm",
-                    type="password",
-                )
-                activation_submit = st.form_submit_button(mode_title, use_container_width=True)
-            if activation_submit:
-                activation_email_clean = (act_email or "").strip()
-                if not activation_email_clean or not act_password:
-                    st.error("Completa el correo institucional y la nueva contraseña.")
-                elif len(act_password) < 8:
-                    st.error("La contraseña debe tener al menos 8 caracteres.")
-                elif act_password != act_confirm:
-                    st.error("Las contraseñas no coinciden.")
-                elif not auth_service.ensure_user_record(activation_email_clean):
-                    st.error("Ese correo no está autorizado para controlTesis.")
-                else:
-                    ok = auth_service.set_initial_password(
-                        activation_email_clean,
-                        act_password,
-                        force=True,
-                    )
-                    if ok:
-                        st.success("Contraseña registrada. Ahora puedes iniciar sesión.")
-                        st.session_state["login_mode"] = "login"
-                        st.session_state["login_activation_reset"] = True
-                        _streamlit_rerun()
-                    else:
-                        st.error("No se pudo actualizar la contraseña. Verifica los datos ingresados.")
-            if st.button("Volver al inicio de sesión", use_container_width=True):
-                st.session_state["login_mode"] = "login"
-                _streamlit_rerun()
+        with st.form("tf_login_form", border=False, clear_on_submit=False):
+            email = st.text_input(
+                "Correo institucional",
+                key="login_email",
+                placeholder="usuario@umanizales.edu.co",
+            )
+            password = st.text_input(
+                "Contrasena",
+                key="login_password",
+                type="password",
+                placeholder="Contrasena",
+            )
+            submitted_login = st.form_submit_button("Iniciar sesion", use_container_width=True)
 
         error_msg = st.session_state.get(LOGIN_ERROR_KEY)
         if error_msg:
             st.markdown(f'<div class="tf-login-alert">{error_msg}</div>', unsafe_allow_html=True)
 
-    if st.session_state["login_mode"] == "login":
-        st.session_state["show_activation_form"] = False
-
-    st.markdown(
-        f"""
-<div class="tf-login-support-row">
-    <div class="tf-login-support">
-        <span>Soporte institucional</span>
-        <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a>
-    </div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
     if submitted_login:
         user = auth_service.authenticate(email, password)
         if user is None:
-            st.session_state[LOGIN_ERROR_KEY] = "Credenciales inválidas. Verifica correo y contraseña."
-            st.session_state["login_password_reset"] = True
-        elif user.must_reset:
-            st.session_state[LOGIN_ERROR_KEY] = "Activa tu acceso antes de ingresar."
+            st.session_state[LOGIN_ERROR_KEY] = "Credenciales invalidas. Verifica correo y contrasena."
             st.session_state["login_password_reset"] = True
         else:
             st.session_state[LOGIN_ERROR_KEY] = ""
@@ -209,7 +121,7 @@ def logout() -> None:
 
 
 def render_session_header(user: AuthUser) -> None:
-    """Muestra la identidad del usuario activo y opción de cierre de sesión."""
+    """Muestra la identidad del usuario activo y opcion de cierre de sesion."""
     info_col, action_col = st.columns([0.8, 0.2])
     with info_col:
         st.markdown(
@@ -222,5 +134,5 @@ def render_session_header(user: AuthUser) -> None:
             unsafe_allow_html=True,
         )
     with action_col:
-        if st.button("Cerrar sesión", key="tf_logout_button"):
+        if st.button("Cerrar sesion", key="tf_logout_button"):
             logout()
