@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from datetime import date, datetime
 from typing import Dict, List, Optional
 import io
@@ -195,6 +196,25 @@ div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"]
     background-color: #d6f7e7 !important;
 }
 </style>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_menu_logo() -> None:
+    logo_path = getattr(config, "MENU_LOGO_PATH", None)
+    if not logo_path or not logo_path.exists():
+        return
+    encoded_logo = base64.b64encode(logo_path.read_bytes()).decode("ascii")
+    st.markdown(
+        f"""
+<div class="tf-menu-logo-wrap">
+    <img
+        src="data:image/png;base64,{encoded_logo}"
+        alt="Biblioteca y Centro de Recursos Universidad de Manizales"
+        class="tf-menu-logo"
+    />
+</div>
 """,
         unsafe_allow_html=True,
     )
@@ -480,6 +500,7 @@ def _render_tabs(service: RegistroService, meta: dict, user: AuthUser) -> None:
 
     with menu_col:
         _inject_sidebar_menu_styles()
+        _render_menu_logo()
         with st.expander("Menú", expanded=True):
             labels = [item["label"] for item in available_menu]
             keys = [item["key"] for item in available_menu]

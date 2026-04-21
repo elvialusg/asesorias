@@ -472,11 +472,27 @@ form[id*="tf_reset_form"] .stButton button:active {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  color: #f8fafc;
+  color: #d6f7e7;
   font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: 0.015em;
   text-align: center;
+}
+
+.tf-menu-logo-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0 0 1rem;
+  padding: 0.25rem 0 0.5rem;
+}
+
+.tf-menu-logo {
+  display: block;
+  width: min(100%, 240px);
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 22px rgba(7, 16, 19, 0.22));
 }
 
 .tf-user-id {
@@ -507,7 +523,7 @@ form[id*="tf_reset_form"] .stButton button:active {
 }
 
 .tf-user-footer__name {
-  color: #ffffff;
+  color: #d6f7e7;
   font-size: 1.05rem;
   font-weight: 700;
   margin-bottom: 0.15rem;
