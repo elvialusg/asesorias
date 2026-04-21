@@ -65,8 +65,13 @@
 .stButton button:focus,
 .stButton button:active {
   border-radius: 12px !important;
-  padding: 0.6rem 1.5rem !important;
+  padding: 0.52rem 1.05rem !important;
   font-weight: 600 !important;
+  font-size: 0.96rem !important;
+  white-space: nowrap !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  min-width: fit-content !important;
 
   background: linear-gradient(135deg, var(--button-bg), var(--button-bg-dark)) !important;
   color: #ffffff !important;
@@ -472,11 +477,18 @@ form[id*="tf_reset_form"] .stButton button:active {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  color: #d6f7e7;
-  font-size: 1.35rem;
+  color: #ffffff;
+  font-size: 1.65rem;
   font-weight: 700;
   letter-spacing: 0.015em;
   text-align: center;
+}
+
+[data-testid="stHeadingWithActionElements"] h1,
+[data-testid="stHeadingWithActionElements"] h2,
+[data-testid="stHeadingWithActionElements"] h3 {
+  font-size: 1.35rem !important;
+  line-height: 1.25 !important;
 }
 
 .tf-menu-logo-wrap {
@@ -523,14 +535,14 @@ form[id*="tf_reset_form"] .stButton button:active {
 }
 
 .tf-user-footer__name {
-  color: #d6f7e7;
+  color: #0d1f17;
   font-size: 1.05rem;
   font-weight: 700;
   margin-bottom: 0.15rem;
 }
 
 .tf-user-footer__meta {
-  color: rgba(255, 255, 255, 0.76);
+  color: rgba(13, 31, 23, 0.9);
   font-size: 0.95rem;
   font-weight: 500;
 }

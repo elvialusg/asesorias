@@ -68,9 +68,14 @@ div[data-testid="baseButton-primary"] button:active {{
     color: #ffffff;
     border-radius: 999px;
     border: 1px solid {primary_bg};
-    padding: 0.45rem 1.5rem;
+    padding: 0.42rem 1.05rem;
     font-weight: 600;
+    font-size: 0.96rem;
     letter-spacing: 0.01em;
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
+    min-width: fit-content;
     box-shadow: none;
     transition: none;
     outline: none;
@@ -83,8 +88,13 @@ div[data-testid="baseButton-secondary"] button:active {{
     color: {DASHBOARD_TEXT_COLOR};
     border-radius: 999px;
     border: 1px solid {secondary_border};
-    padding: 0.4rem 1.25rem;
+    padding: 0.38rem 0.95rem;
     font-weight: 500;
+    font-size: 0.96rem;
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
+    min-width: fit-content;
     transition: none;
     box-shadow: none;
     outline: none;
@@ -149,7 +159,7 @@ div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"]
 }
 div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"] > div:last-child {
     color: #ffffff !important;
-    font-size: 1.28rem !important;
+    font-size: 1.16rem !important;
     font-weight: 700 !important;
     line-height: 1.35;
     letter-spacing: 0.01em;
@@ -158,7 +168,7 @@ div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"]
 div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"] span,
 div[data-testid="stExpander"] div[role="radiogroup"] label[data-baseweb="radio"] div[data-testid="stMarkdownContainer"] p {
     color: #ffffff !important;
-    font-size: 1.28rem !important;
+    font-size: 1.16rem !important;
     font-weight: 700 !important;
     line-height: 1.35 !important;
     margin: 0 !important;
@@ -529,13 +539,16 @@ def _render_tabs(service: RegistroService, meta: dict, user: AuthUser) -> None:
         if current == "register":
             _tab_registro(content_col, service, meta)
         elif current == "consult":
-            _tab_consulta(content_col, service, meta)
+            consult_left, consult_center, consult_right = st.columns([0.12, 0.76, 0.12])
+            _tab_consulta(consult_center, service, meta)
         elif current == "normalizacion":
             _tab_normalizacion(content_col, service, meta)
         elif current == "publicacion":
-            _tab_publicacion_v3(content_col, service, meta)
+            pub_left, pub_center, pub_right = st.columns([0.12, 0.76, 0.12])
+            _tab_publicacion_v3(pub_center, service, meta)
         elif current == "dashboard":
-            _tab_dashboard(content_col, service, meta)
+            dash_left, dash_center, dash_right = st.columns([0.12, 0.76, 0.12])
+            _tab_dashboard(dash_center, service, meta)
 
     login_ui.render_session_footer(user)
 
@@ -995,8 +1008,6 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
         spacer_left, col_center, spacer_right = st.columns([0.12, 0.76, 0.12])
         with col_center:
             st.subheader("Normalización")
-            st.markdown('<h3 style="font-size:1.2rem; margin-bottom:0.5rem;">Distribuir registros existentes</h3>', unsafe_allow_html=True)
-            st.caption("La distribución se realiza por tesis; todos los estudiantes de una tesis quedan con la misma asignación.")
             default_people = getattr(config, "DEFAULT_ASSIGNMENT_PEOPLE", [])
             default_text = "\n".join(default_people)
             responsables_text = st.text_area(
