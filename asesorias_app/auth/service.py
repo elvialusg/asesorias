@@ -1,4 +1,4 @@
-"""Servicios de autenticación y seguridad para controlTesis."""
+"""Servicios de autenticacion y seguridad para controlTesis."""
 
 from __future__ import annotations
 
@@ -69,24 +69,51 @@ def _int_value(value) -> Optional[int]:
         return None
 
 
+def _clean_password_value(value: Optional[str]) -> str:
+    return fix_text_encoding(value, strip=True) or ""
+
+
 def _hash_password(password: str) -> str:
+    password = _clean_password_value(password)
     salt = secrets.token_bytes(16)
     derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PASSWORD_ITERATIONS)
     return base64.b64encode(salt).decode("utf-8") + ":" + base64.b64encode(derived).decode("utf-8")
 
 
-def _verify_password(password: str, stored: str) -> bool:
-    try:
-        salt_b64, hash_b64 = stored.split(":")
-    except ValueError:
+def _looks_like_pbkdf2_hash(stored: str) -> bool:
+    stored = _clean_password_value(stored)
+    if ":" not in stored:
         return False
     try:
+        salt_b64, hash_b64 = stored.split(":", 1)
+        base64.b64decode(salt_b64)
+        base64.b64decode(hash_b64)
+    except Exception:
+        return False
+    return True
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    password = _clean_password_value(password)
+    stored = _clean_password_value(stored)
+    try:
+        salt_b64, hash_b64 = stored.split(":", 1)
         salt = base64.b64decode(salt_b64)
         stored_hash = base64.b64decode(hash_b64)
     except Exception:
         return False
     new_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PASSWORD_ITERATIONS)
     return secrets.compare_digest(stored_hash, new_hash)
+
+
+def _password_matches(password: str, stored: str) -> bool:
+    password = _clean_password_value(password)
+    stored = _clean_password_value(stored)
+    if not password or not stored:
+        return False
+    if _looks_like_pbkdf2_hash(stored):
+        return _verify_password(password, stored)
+    return secrets.compare_digest(password, stored)
 
 
 def _load_store() -> Dict[str, dict]:
@@ -138,28 +165,14 @@ def authenticate(email: str, password: str) -> Optional[AuthUser]:
     user = store.get(_normalize_email(email))
     if not user:
         return None
-    stored_hash = user.get("password_hash") or ""
-    updated = False
-    if ":" not in stored_hash:
-        if not secrets.compare_digest(stored_hash, password):
-            return None
-        user["password_hash"] = _hash_password(password)
-        user["must_reset"] = False
-        updated = True
-    elif not _verify_password(password, stored_hash):
-        if password == stored_hash:
-            user["password_hash"] = _hash_password(password)
-            user["must_reset"] = False
-            updated = True
-        else:
-            return None
-    if updated:
-        _save_store(store)
+    stored_value = user.get("password_hash") or ""
+    if not _password_matches(password, stored_value):
+        return None
     return AuthUser(
         email=user["email"],
         name=user["name"],
         role=user["role"],
-        must_reset=bool(user.get("must_reset")),
+        must_reset=False,
     )
 
 
@@ -167,7 +180,7 @@ def change_password(email: str, current_password: str, new_password: str) -> boo
     store = _load_store()
     key = _normalize_email(email)
     user = store.get(key)
-    if not user or not _verify_password(current_password, user["password_hash"]):
+    if not user or not _password_matches(current_password, user.get("password_hash") or ""):
         return False
     user["password_hash"] = _hash_password(new_password)
     user["must_reset"] = False
@@ -207,6 +220,20 @@ def reset_password(email: str, token: str, new_password: str) -> bool:
     return True
 
 
+def update_password(email: str, new_password: str) -> bool:
+    store = _load_store()
+    key = _normalize_email(email)
+    user = store.get(key)
+    if not user:
+        return False
+    user["password_hash"] = _hash_password(new_password)
+    user["must_reset"] = False
+    user["reset_token"] = None
+    user["reset_token_expire"] = None
+    _save_store(store)
+    return True
+
+
 def list_users() -> Dict[str, dict]:
     return _load_store()
 
@@ -229,9 +256,7 @@ def needs_password_setup(email: str) -> bool:
     user = store.get(_normalize_email(email))
     if not user:
         return False
-    if not user.get("password_hash"):
-        return True
-    return bool(user.get("must_reset"))
+    return not bool(_clean_password_value(user.get("password_hash")))
 
 
 def set_initial_password(email: str, new_password: str, *, force: bool = False) -> bool:
@@ -240,7 +265,7 @@ def set_initial_password(email: str, new_password: str, *, force: bool = False) 
     user = store.get(key)
     if not user:
         return False
-    if not user.get("must_reset") and not force:
+    if not user.get("must_reset") and not force and _clean_password_value(user.get("password_hash")):
         return False
     user["password_hash"] = _hash_password(new_password)
     user["must_reset"] = False

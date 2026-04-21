@@ -449,7 +449,7 @@ def _render_tabs(service: RegistroService, meta: dict, user: AuthUser) -> None:
         elif current == "normalizacion":
             _tab_normalizacion(content_col, service, meta)
         elif current == "publicacion":
-            _tab_publicacion(content_col, service, meta)
+            _tab_publicacion_v3(content_col, service, meta)
         elif current == "dashboard":
             _tab_dashboard(content_col, service, meta)
 
@@ -1067,7 +1067,7 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
 def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
     with tab:
         try:
-            df_ready = service.get_publicacion_registros()
+            df_ready = service.build_publicacion_tesis_dataframe()
         except Exception as exc:  # pragma: no cover
             st.error(f"No se pudieron cargar los registros para publicación: {exc}")
             return
@@ -1101,7 +1101,7 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
                 value=False,
                 key="publicacion_show_all",
             )
-        df_responsable = service.get_publicacion_registros(
+        df_responsable = service.build_publicacion_tesis_dataframe(
             None if show_all else responsable,
             include_all_for_primary=show_all,
         )
@@ -1216,6 +1216,331 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
                                 st.error(f"No se pudo reasignar: {exc}")
                             else:
                                 st.success(f"Se reasignaron {updated} registros a {support_name}.")
+                                _streamlit_rerun()
+
+def _tab_publicacion_v2(tab, service: RegistroService, meta: dict) -> None:
+    with tab:
+        try:
+            df_ready = service.build_publicacion_tesis_dataframe()
+        except Exception as exc:  # pragma: no cover
+            st.error(f"No se pudieron cargar los registros para publicaciÃ³n: {exc}")
+            return
+
+        summary = service.summarize_publicacion(df_ready)
+        assigned = summary.get("assigned", {})
+        metric_cols = st.columns(4)
+        metric_cols[0].metric("Listos para publicaciÃ³n", summary.get("total", 0))
+        metric_cols[1].metric("Pendientes", summary.get("pending", 0))
+        metric_cols[2].metric("Publicados", summary.get("published", 0))
+        metric_cols[3].metric("Asignados Gloria", assigned.get(config.PUBLICATION_PRIMARY, 0))
+        support_name = config.PUBLICATION_RESPONSIBLES[1]
+        st.metric("Asignados Diana", assigned.get(support_name, 0))
+
+        responsables = service.list_publicacion_responsables()
+        if not responsables:
+            st.info("No hay responsables configurados para publicaciÃ³n.")
+            return
+
+        responsable = st.selectbox(
+            "Responsable activo",
+            options=responsables,
+            key="publicacion_responsable_v2",
+        )
+        if not responsable:
+            st.info("Selecciona un responsable para ver sus registros.")
+            return
+
+        show_all = False
+        primary_norm = (utils.norm_str(config.PUBLICATION_PRIMARY) or "").lower()
+        responsable_norm = (utils.norm_str(responsable) or "").lower()
+        if responsable_norm == primary_norm:
+            show_all = st.checkbox(
+                "Ver todos los pendientes de publicaciÃ³n",
+                value=False,
+                key="publicacion_show_all_v2",
+            )
+
+        df_responsable = service.build_publicacion_tesis_dataframe(
+            None if show_all else responsable,
+            include_all_for_primary=show_all,
+        )
+        if df_responsable.empty:
+            st.info("No hay registros listos para publicaciÃ³n con este filtro.")
+            return
+
+        try:
+            download_payload = service.build_publicacion_excel(
+                None if show_all else responsable,
+                include_all_for_primary=show_all,
+            )
+        except ValueError:
+            download_payload = None
+        else:
+            safe_name = (responsable.lower().replace(" ", "_")) if not show_all else "todos"
+            st.download_button(
+                _download_label_for_responsable(
+                    responsable if not show_all else "todos",
+                    show_all=show_all,
+                    context="publicacion",
+                ),
+                data=download_payload,
+                file_name=f"publicacion_{safe_name}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
+        edit_source = pd.DataFrame(
+            {
+                "ID": df_responsable.get("ID", pd.Series(dtype=str)).astype(str),
+                "Tesis": df_responsable.get("Tesis", pd.Series(dtype=str)),
+                "Estudiantes": df_responsable.get("Estudiantes", pd.Series(dtype=int)),
+                "Asignado": df_responsable.get("Asignado", pd.Series(dtype=str)),
+                "Publicado": df_responsable.get("Publicado", pd.Series(dtype=bool)).astype(bool),
+                "Observacion": df_responsable.get("Observacion", pd.Series(dtype=str)),
+            }
+        ).set_index("ID")
+
+        column_config = {
+            "Tesis": st.column_config.TextColumn("Trabajo de grado / tesis", disabled=True),
+            "Estudiantes": st.column_config.NumberColumn("Estudiantes", disabled=True, min_value=1, step=1),
+            "Asignado": st.column_config.TextColumn("Asignado a", disabled=True),
+            "Publicado": st.column_config.CheckboxColumn("Publicado"),
+            "Observacion": st.column_config.TextColumn("ObservaciÃ³n publicaciÃ³n"),
+        }
+        edited_df = st.data_editor(
+            edit_source,
+            hide_index=True,
+            column_config=column_config,
+            key=f"editor_publicacion_v2_{responsable}",
+        )
+
+        if _button("Guardar publicaciÃ³n", key=f"btn_save_publicacion_v2_{responsable}", type="primary"):
+            updates = [
+                {
+                    "id": idx,
+                    "ok": bool(row["Publicado"]),
+                    "observacion": row.get("Observacion", ""),
+                }
+                for idx, row in edited_df.iterrows()
+            ]
+            with st.spinner("Guardando cambios en Google Sheets..."):
+                try:
+                    resultado = service.update_publicacion_estado(responsable, updates)
+                except Exception as exc:  # pragma: no cover
+                    st.error(f"No se pudieron guardar los cambios: {exc}")
+                else:
+                    st.success(
+                        f"Se actualizaron {resultado.get('updated', 0)} tesis de {responsable}."
+                    )
+                    st.info(
+                        f"Pendientes: {resultado.get('pending', 0)} | Publicados: {resultado.get('published', 0)}"
+                    )
+                    _streamlit_rerun()
+
+        if responsable_norm == primary_norm:
+            st.markdown("---")
+            st.markdown("#### Asignar tesis a Diana Patricia Salazar")
+            pending_gloria = service.build_publicacion_tesis_dataframe(
+                config.PUBLICATION_PRIMARY,
+                only_pending=True,
+            )
+            if pending_gloria.empty:
+                st.info("No hay registros pendientes para reasignar.")
+            else:
+                options = []
+                display_to_id = {}
+                for _, row in pending_gloria.iterrows():
+                    tesis = row.get("Tesis", "Sin tesis")
+                    estudiantes = row.get("Estudiantes", 0)
+                    uid = str(row.get("ID", tesis))
+                    text = f"{tesis} ({estudiantes} estudiante(s))"
+                    options.append(text)
+                    display_to_id[text] = uid
+                seleccion = st.multiselect(
+                    "Selecciona tesis para enviar a Diana",
+                    options=options,
+                    key="publicacion_assign_list_v2",
+                )
+                if _button("Asignar a Diana", key="btn_assign_publicacion_v2", type="primary"):
+                    ids_to_assign = [display_to_id[label] for label in seleccion]
+                    if not ids_to_assign:
+                        st.warning("Selecciona al menos una tesis para reasignar.")
+                    else:
+                        with st.spinner("Actualizando asignaciones..."):
+                            try:
+                                updated = service.assign_publicacion(
+                                    config.PUBLICATION_PRIMARY,
+                                    ids_to_assign,
+                                    support_name,
+                                )
+                            except Exception as exc:  # pragma: no cover
+                                st.error(f"No se pudo reasignar: {exc}")
+                            else:
+                                st.success(
+                                    f"Se actualizaron {updated} filas asociadas a las tesis seleccionadas y se asignaron a {support_name}."
+                                )
+                                _streamlit_rerun()
+
+
+def _tab_publicacion_v3(tab, service: RegistroService, meta: dict) -> None:
+    with tab:
+        try:
+            df_ready = service.build_publicacion_tesis_dataframe()
+        except Exception as exc:  # pragma: no cover
+            st.error(f"No se pudieron cargar los registros para publicación: {exc}")
+            return
+
+        summary = service.summarize_publicacion(df_ready)
+        assigned = summary.get("assigned", {})
+        metric_cols = st.columns(4)
+        metric_cols[0].metric("Listos para publicación", summary.get("total", 0))
+        metric_cols[1].metric("Pendientes", summary.get("pending", 0))
+        metric_cols[2].metric("Publicados", summary.get("published", 0))
+        metric_cols[3].metric("Asignados Gloria", assigned.get(config.PUBLICATION_PRIMARY, 0))
+        support_name = config.PUBLICATION_RESPONSIBLES[1]
+        st.metric("Asignados Diana", assigned.get(support_name, 0))
+
+        responsables = service.list_publicacion_responsables()
+        if not responsables:
+            st.info("No hay responsables configurados para publicación.")
+            return
+
+        responsable = st.selectbox(
+            "Responsable activo",
+            options=responsables,
+            key="publicacion_responsable_v3",
+        )
+        if not responsable:
+            st.info("Selecciona un responsable para ver sus registros.")
+            return
+
+        show_all = False
+        primary_norm = (utils.norm_str(config.PUBLICATION_PRIMARY) or "").lower()
+        responsable_norm = (utils.norm_str(responsable) or "").lower()
+        if responsable_norm == primary_norm:
+            show_all = st.checkbox(
+                "Ver todos los pendientes de publicación",
+                value=False,
+                key="publicacion_show_all_v3",
+            )
+
+        df_responsable = service.build_publicacion_tesis_dataframe(
+            None if show_all else responsable,
+            include_all_for_primary=show_all,
+        )
+        if df_responsable.empty:
+            st.info("No hay registros listos para publicación con este filtro.")
+            return
+
+        try:
+            download_payload = service.build_publicacion_excel(
+                None if show_all else responsable,
+                include_all_for_primary=show_all,
+            )
+        except ValueError:
+            download_payload = None
+        else:
+            safe_name = (responsable.lower().replace(" ", "_")) if not show_all else "todos"
+            st.download_button(
+                _download_label_for_responsable(
+                    responsable if not show_all else "todos",
+                    show_all=show_all,
+                    context="publicacion",
+                ),
+                data=download_payload,
+                file_name=f"publicacion_{safe_name}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
+        edit_source = pd.DataFrame(
+            {
+                "ID": df_responsable.get("ID", pd.Series(dtype=str)).astype(str),
+                "Tesis": df_responsable.get("Tesis", pd.Series(dtype=str)),
+                "Estudiantes": df_responsable.get("Estudiantes", pd.Series(dtype=int)),
+                "Asignado": df_responsable.get("Asignado", pd.Series(dtype=str)),
+                "Publicado": df_responsable.get("Publicado", pd.Series(dtype=bool)).astype(bool),
+                "Observacion": df_responsable.get("Observacion", pd.Series(dtype=str)),
+            }
+        ).set_index("ID")
+
+        column_config = {
+            "Tesis": st.column_config.TextColumn("Trabajo de grado / tesis", disabled=True),
+            "Estudiantes": st.column_config.NumberColumn("Estudiantes", disabled=True, min_value=1, step=1),
+            "Asignado": st.column_config.TextColumn("Asignado a", disabled=True),
+            "Publicado": st.column_config.CheckboxColumn("Publicado"),
+            "Observacion": st.column_config.TextColumn("Observación publicación"),
+        }
+        edited_df = st.data_editor(
+            edit_source,
+            hide_index=True,
+            column_config=column_config,
+            key=f"editor_publicacion_v3_{responsable}",
+        )
+
+        if _button("Guardar publicación", key=f"btn_save_publicacion_v3_{responsable}", type="primary"):
+            updates = [
+                {
+                    "id": idx,
+                    "ok": bool(row["Publicado"]),
+                    "observacion": row.get("Observacion", ""),
+                }
+                for idx, row in edited_df.iterrows()
+            ]
+            with st.spinner("Guardando cambios en Google Sheets..."):
+                try:
+                    resultado = service.update_publicacion_estado(responsable, updates)
+                except Exception as exc:  # pragma: no cover
+                    st.error(f"No se pudieron guardar los cambios: {exc}")
+                else:
+                    st.success(
+                        f"Se actualizaron {resultado.get('updated', 0)} tesis de {responsable}."
+                    )
+                    st.info(
+                        f"Pendientes: {resultado.get('pending', 0)} | Publicados: {resultado.get('published', 0)}"
+                    )
+                    _streamlit_rerun()
+
+        if responsable_norm == primary_norm:
+            st.markdown("---")
+            st.markdown("#### Asignar tesis a Diana Patricia Salazar")
+            pending_gloria = service.build_publicacion_tesis_dataframe(
+                config.PUBLICATION_PRIMARY,
+                only_pending=True,
+            )
+            if pending_gloria.empty:
+                st.info("No hay registros pendientes para reasignar.")
+            else:
+                options = []
+                display_to_id = {}
+                for _, row in pending_gloria.iterrows():
+                    tesis = row.get("Tesis", "Sin tesis")
+                    estudiantes = row.get("Estudiantes", 0)
+                    uid = str(row.get("ID", tesis))
+                    text = f"{tesis} ({estudiantes} estudiante(s))"
+                    options.append(text)
+                    display_to_id[text] = uid
+                seleccion = st.multiselect(
+                    "Selecciona tesis para enviar a Diana",
+                    options=options,
+                    key="publicacion_assign_list_v3",
+                )
+                if _button("Asignar a Diana", key="btn_assign_publicacion_v3", type="primary"):
+                    ids_to_assign = [display_to_id[label] for label in seleccion]
+                    if not ids_to_assign:
+                        st.warning("Selecciona al menos una tesis para reasignar.")
+                    else:
+                        with st.spinner("Actualizando asignaciones..."):
+                            try:
+                                updated = service.assign_publicacion(
+                                    config.PUBLICATION_PRIMARY,
+                                    ids_to_assign,
+                                    support_name,
+                                )
+                            except Exception as exc:  # pragma: no cover
+                                st.error(f"No se pudo reasignar: {exc}")
+                            else:
+                                st.success(
+                                    f"Se actualizaron {updated} filas asociadas a las tesis seleccionadas y se asignaron a {support_name}."
+                                )
                                 _streamlit_rerun()
 
 

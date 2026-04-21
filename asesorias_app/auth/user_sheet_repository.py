@@ -10,6 +10,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from asesorias_app import config
+from asesorias_app.core.utils import fix_text_encoding
 
 DEFAULT_HEADERS = [
     "email",
@@ -33,7 +34,7 @@ class UserSheetRepository:
     ) -> None:
         self.spreadsheet_id = (spreadsheet_id or config.GOOGLE_SHEETS_SPREADSHEET_ID).strip()
         if not self.spreadsheet_id:
-            raise ValueError("GOOGLE_SHEETS_SPREADSHEET_ID no está configurado.")
+            raise ValueError("GOOGLE_SHEETS_SPREADSHEET_ID no esta configurado.")
         self.credentials_file = Path(credentials_file or config.SERVICE_ACCOUNT_FILE)
         self.users_range = users_range or config.GOOGLE_SHEETS_USERS_RANGE
         self._headers: List[str] | None = None
@@ -55,10 +56,29 @@ class UserSheetRepository:
 
     @staticmethod
     def _normalize_header(name: str) -> str:
-        text = (name or "").strip().lower()
-        text = text.replace(" ", "_")
+        text = fix_text_encoding(name, strip=True) or ""
+        text = text.lower().replace(" ", "_")
         if text in ("correo", "correo_institucional"):
             return "email"
+        if text in (
+            "contraseña",
+            "contraseã±a",
+            "contrasena",
+            "clave",
+            "password",
+            "passwordhash",
+            "password_hash",
+            "contraseña_asignada",
+            "contrasena_asignada",
+            "clave_asignada",
+        ):
+            return "password_hash"
+        if "contraseña" in text or "contrasena" in text or "password" in text or text.startswith("clave"):
+            return "password_hash"
+        if text in ("nombre", "usuario", "nombre_usuario"):
+            return "name"
+        if text in ("rol", "perfil"):
+            return "role"
         return text
 
     def load_users(self) -> List[Dict[str, str]]:
@@ -76,7 +96,7 @@ class UserSheetRepository:
         if not rows:
             self._headers = DEFAULT_HEADERS.copy()
             return []
-        headers = [col.strip() for col in rows[0]]
+        headers = [fix_text_encoding(col, strip=True) or "" for col in rows[0]]
         if not headers:
             headers = DEFAULT_HEADERS.copy()
         self._headers = headers
