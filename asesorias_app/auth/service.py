@@ -6,6 +6,7 @@ import base64
 import hashlib
 import secrets
 import time
+import unicodedata
 from dataclasses import dataclass
 from typing import Dict, Optional, Set
 
@@ -18,10 +19,11 @@ RESET_TOKEN_TTL = 3600  # 1 hora
 
 ROLE_FEATURES: Dict[str, Set[str]] = {
     "administrador": {"*"},
-    "direccion": {"register", "consult", "normalizacion", "publicacion", "dashboard", "admin"},
-    "normalizacion": {"register", "consult", "normalizacion", "dashboard"},
+    "direccion": {"register", "consult", "normalizacion", "publicacion", "dashboard"},
+    "dirección": {"register", "consult", "normalizacion", "publicacion", "dashboard"},
+    "referencista": {"register", "consult", "normalizacion", "publicacion", "dashboard"},
     "publicacion": {"register", "consult", "publicacion", "dashboard"},
-    "servicios": {"register", "consult"},
+    "servicios": {"register", "consult", "dashboard"},
     "colaborador": {"register", "consult"},
 }
 
@@ -48,7 +50,9 @@ def _normalize_email(email: str) -> str:
 def _role_key(role: Optional[str]) -> str:
     if not role:
         return "colaborador"
-    return fix_text_encoding(role, strip=True).lower()
+    text = fix_text_encoding(role, strip=True).lower()
+    normalized = unicodedata.normalize("NFD", text)
+    return "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
 
 
 def _bool_value(value) -> bool:
