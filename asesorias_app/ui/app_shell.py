@@ -1712,26 +1712,48 @@ def _tab_dashboard(tab, service: RegistroService, meta: dict) -> None:
         ]
         stage_df = pd.DataFrame(stage_data, columns=['Etapa', 'Cantidad'])
         stage_df['Etiqueta'] = stage_df['Cantidad'].apply(lambda v: '' if v == 0 else str(v))
-        colors = ['#186f65', '#2f8f83', '#48b19b', '#a3e6c9', '#94a3b8']
+        colors = ['#2f6f68', '#4d8d84', '#73aea1', '#a9d3c0', '#7b8794']
+        line_colors = ['#244f4b', '#376861', '#5e8d84', '#8fb7a7', '#5d6670']
         fig = go.Figure(
             data=[
                 go.Bar(
                     x=stage_df['Etapa'],
                     y=stage_df['Cantidad'],
                     marker_color=colors[: len(stage_df)],
+                    marker_line_color=line_colors[: len(stage_df)],
+                    marker_line_width=1.4,
                     text=stage_df['Etiqueta'],
                     textposition='outside',
+                    textfont=dict(color='#405261', size=14, family='Arial'),
                     hovertemplate='<b>%{x}</b><br>Cantidad: %{y}<extra></extra>',
                 )
             ]
         )
         fig.update_layout(
-            template='simple_white',
+            template='plotly_white',
+            paper_bgcolor='#edf2f0',
+            plot_bgcolor='#f8fbfa',
+            font=dict(color='#344054', size=13),
             xaxis_title='Etapa del proceso',
             yaxis_title='Cantidad de tesis',
             uniformtext_minsize=10,
             uniformtext_mode='show',
-            margin=dict(t=60, b=40, l=40, r=20),
+            margin=dict(t=70, b=56, l=52, r=28),
+            bargap=0.22,
+            showlegend=False,
+        )
+        fig.update_xaxes(
+            showgrid=False,
+            tickfont=dict(size=13, color='#475467'),
+            title_font=dict(size=14, color='#475467'),
+        )
+        fig.update_yaxes(
+            showgrid=True,
+            gridcolor='#d8e3df',
+            gridwidth=1,
+            zeroline=False,
+            tickfont=dict(size=12, color='#667085'),
+            title_font=dict(size=14, color='#475467'),
         )
         st.plotly_chart(fig, use_container_width=True)
 
