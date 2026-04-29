@@ -918,7 +918,17 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
             return
         search_cols = st.columns([0.85, 0.15])
         with search_cols[0]:
-            q = st.text_input("Buscar por nombre o cédula", placeholder="Ej: Valentina o 1032331000", key="q_search")
+            q = st.text_input(
+                "Buscar por nombre o cédula",
+                placeholder="Ej: Valentina o 1032331000",
+                key="q_search",
+            )
+            busqueda_tesis = st.text_input(
+                "Buscar por título de tesis",
+                placeholder="Ej: El parasitismo",
+                key="q_search_thesis",
+            )
+            
         with search_cols[1]:
             if _button("Buscar", key="btn_search_trigger", help="Ejecutar búsqueda", type="primary"):
                 _streamlit_rerun()
@@ -940,6 +950,57 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
         with modify_cols[0]:
             st.markdown(" ")
         with modify_cols[1]:
+            if q.strip():
+                qq = q.strip().lower()
+                base_filtered = locals().get("df", filtered).copy()
+                title_col = next(
+                    (
+                        col
+                        for col in ["Título_Trabajo_Grado", "Titulo_Trabajo_Grado"]
+                        if col in base_filtered.columns
+                    ),
+                    None,
+                )
+                if title_col:
+                    title_matches = base_filtered[
+                        base_filtered[title_col].astype(str).str.lower().str.contains(qq, na=False)
+                    ]
+                    if not title_matches.empty:
+                        filtered = pd.concat([filtered, title_matches], ignore_index=False).drop_duplicates()
+
+            if q.strip():
+                qq = q.strip().lower()
+                filtered = filtered[
+                    filtered["Nombre_Usuario"].astype(str).str.lower().str.contains(qq, na=False)
+                    | filtered["Cédula"].astype(str).str.strip().str.contains(qq, na=False)
+                ]
+
+            if busqueda_tesis.strip():
+                tesis_query = (
+                    str(busqueda_tesis)
+                    .replace("\u00a0", " ")
+                    .replace("\n", " ")
+                    .replace("\r", " ")
+                    .strip()
+                    .lower()
+                )
+                base_tesis = filtered.copy()
+                filtered = base_tesis[
+                    base_tesis["Título_Trabajo_Grado"]
+                    .astype(str)
+                    .map(
+                        lambda valor: (
+                            str(valor)
+                            .replace("\u00a0", " ")
+                            .replace("\n", " ")
+                            .replace("\r", " ")
+                            .strip()
+                            .lower()
+                        )
+                    )
+                    .str.contains(tesis_query, regex=False, na=False)
+                ]
+
             if _button("Modificar registro", key="btn_consulta_modify", disabled=len(filtered) != 1, type="secondary"):
                 if len(filtered) == 1:
                     selected_idx = int(filtered.index[0])
