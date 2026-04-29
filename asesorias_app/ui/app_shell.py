@@ -467,6 +467,34 @@ def _autofill_by_cedula(
         }
 
 
+def _warn_if_tesis_exists(service: RegistroService, title_key: str = "titulo") -> None:
+    title_value = utils.norm_str(st.session_state.get(title_key))
+    if not title_value:
+        return
+    try:
+        df = service.load_registro()
+    except Exception:
+        return
+    thesis_col = RegistroService._tesis_column(df)
+    if not thesis_col or thesis_col not in df.columns or df.empty:
+        return
+    compare_value = title_value.lower()
+    thesis_series = df[thesis_col].fillna("").astype(str).str.strip()
+    matches = thesis_series.str.lower() == compare_value
+    editing_target = st.session_state.get("editing_target")
+    if editing_target:
+        current_index = editing_target.get("index")
+        if current_index in matches.index:
+            matches.loc[current_index] = False
+    if not bool(matches.any()):
+        return
+    st.session_state["search_modal"] = {
+        "message": f"La tesis con el título '{title_value}' ya se encuentra registrada.",
+        "success": False,
+        "expires_at": datetime.utcnow().timestamp() + 10,
+    }
+
+
 def _render_tabs(service: RegistroService, meta: dict, user: AuthUser) -> None:
     login_ui.render_session_header(user)
 
@@ -686,7 +714,11 @@ setTimeout(function(){{
                 )
             correo = st.text_input("Correo electrónico *", placeholder="Ej: usuario@uni.edu", key="correo")
             asesor_met_general = st.text_input("Asesor metodológico", key="asesor_met_general")
-            titulo = st.text_input("Título trabajo de grado", key="titulo")
+            titulo = st.text_input(
+                "Título trabajo de grado",
+                key="titulo",
+                on_change=lambda: _warn_if_tesis_exists(service),
+            )
             fecha = st.date_input("Fecha", key="fecha", format="DD/MM/YYYY")
 
             asesorias_payload = []
