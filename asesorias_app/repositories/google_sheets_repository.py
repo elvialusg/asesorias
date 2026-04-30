@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
+import random
+import time
 from typing import Dict, List, Optional
 
 import pandas as pd
@@ -14,6 +16,22 @@ from googleapiclient.errors import HttpError
 from asesorias_app import config
 from asesorias_app.core.utils import clean_text_dataframe, fix_text_encoding
 from asesorias_app.repositories.excel_repository import ExcelRepository, normalize_registro_df
+
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+MAX_RETRIES = 5
+
+
+def _execute_with_retry(request_factory):
+    for attempt in range(MAX_RETRIES):
+        try:
+            return request_factory().execute()
+        except HttpError as exc:
+            status = getattr(getattr(exc, "resp", None), "status", None)
+            if status not in RETRYABLE_STATUS_CODES or attempt == MAX_RETRIES - 1:
+                raise
+        delay = min(2**attempt + random.random(), 32)
+        time.sleep(delay)
+    raise RuntimeError("No se pudo completar la solicitud a Google Sheets.")
 
 
 class GoogleSheetsRepository(ExcelRepository):
@@ -53,11 +71,10 @@ class GoogleSheetsRepository(ExcelRepository):
     def load_registro(self) -> pd.DataFrame:
         service = self._sheets_service()
         try:
-            result = (
-                service.spreadsheets()
+            result = _execute_with_retry(
+                lambda: service.spreadsheets()
                 .values()
                 .get(spreadsheetId=self.spreadsheet_id, range=self.registro_range)
-                .execute()
             )
         except HttpError as exc:
             raise RuntimeError(
@@ -88,16 +105,20 @@ class GoogleSheetsRepository(ExcelRepository):
             payload.append([self._format_value(value) for value in row.tolist()])
 
         service = self._sheets_service()
-        service.spreadsheets().values().clear(
-            spreadsheetId=self.spreadsheet_id,
-            range=self.registro_range,
-        ).execute()
-        service.spreadsheets().values().update(
-            spreadsheetId=self.spreadsheet_id,
-            range=self.registro_range,
-            valueInputOption="RAW",
-            body={"values": payload},
-        ).execute()
+        _execute_with_retry(
+            lambda: service.spreadsheets().values().clear(
+                spreadsheetId=self.spreadsheet_id,
+                range=self.registro_range,
+            )
+        )
+        _execute_with_retry(
+            lambda: service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range=self.registro_range,
+                valueInputOption="RAW",
+                body={"values": payload},
+            )
+        )
 
     def download_current_excel_bytes(self) -> bytes:
         return super().download_current_excel_bytes()
@@ -108,11 +129,10 @@ class GoogleSheetsRepository(ExcelRepository):
             return base
         service = self._sheets_service()
         try:
-            result = (
-                service.spreadsheets()
+            result = _execute_with_retry(
+                lambda: service.spreadsheets()
                 .values()
                 .get(spreadsheetId=self.spreadsheet_id, range=self.faculties_range)
-                .execute()
             )
         except HttpError:
             return base

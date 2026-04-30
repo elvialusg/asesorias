@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import random
+import time
 from typing import Dict, List
 
 from google.oauth2 import service_account
@@ -21,6 +23,21 @@ DEFAULT_HEADERS = [
     "reset_token",
     "reset_token_expire",
 ]
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+MAX_RETRIES = 5
+
+
+def _execute_with_retry(request_factory):
+    for attempt in range(MAX_RETRIES):
+        try:
+            return request_factory().execute()
+        except HttpError as exc:
+            status = getattr(getattr(exc, "resp", None), "status", None)
+            if status not in RETRYABLE_STATUS_CODES or attempt == MAX_RETRIES - 1:
+                raise
+        delay = min(2**attempt + random.random(), 32)
+        time.sleep(delay)
+    raise RuntimeError("No se pudo completar la solicitud a Google Sheets.")
 
 
 class UserSheetRepository:
@@ -84,11 +101,10 @@ class UserSheetRepository:
     def load_users(self) -> List[Dict[str, str]]:
         service = self._service()
         try:
-            result = (
-                service.spreadsheets()
+            result = _execute_with_retry(
+                lambda: service.spreadsheets()
                 .values()
                 .get(spreadsheetId=self.spreadsheet_id, range=self.users_range)
-                .execute()
             )
         except HttpError as exc:  # pragma: no cover - dependiente de red
             raise RuntimeError("No se pudo consultar la hoja de usuarios en Google Sheets.") from exc
@@ -125,16 +141,20 @@ class UserSheetRepository:
                 row.append(self._format_value(record.get(key, "")))
             payload.append(row)
         service = self._service()
-        service.spreadsheets().values().clear(
-            spreadsheetId=self.spreadsheet_id,
-            range=self.users_range,
-        ).execute()
-        service.spreadsheets().values().update(
-            spreadsheetId=self.spreadsheet_id,
-            range=self.users_range,
-            valueInputOption="RAW",
-            body={"values": payload},
-        ).execute()
+        _execute_with_retry(
+            lambda: service.spreadsheets().values().clear(
+                spreadsheetId=self.spreadsheet_id,
+                range=self.users_range,
+            )
+        )
+        _execute_with_retry(
+            lambda: service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range=self.users_range,
+                valueInputOption="RAW",
+                body={"values": payload},
+            )
+        )
 
     @staticmethod
     def _format_value(value) -> str:

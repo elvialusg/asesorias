@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from functools import wraps
 import io
 from datetime import date, datetime
 import random
+import threading
 from typing import Dict, List, Optional
 import pandas as pd
 
@@ -14,7 +16,18 @@ from asesorias_app.repositories.excel_repository import ExcelRepository, normali
 from asesorias_app.repositories.google_sheets_repository import GoogleSheetsRepository
 
 
+def _write_locked(method):
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._write_lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 class RegistroService:
+    _write_lock = threading.RLock()
+
     def __init__(self, repository: Optional[ExcelRepository] = None) -> None:
         if repository is not None:
             self.repo = repository
@@ -47,7 +60,8 @@ class RegistroService:
         return self.repo.load_registro()
 
     def save_registro(self, df: pd.DataFrame) -> None:
-        self.repo.save_registro(df)
+        with self._write_lock:
+            self.repo.save_registro(df)
 
     def download_bytes(self) -> bytes:
         return self.repo.download_current_excel_bytes()
@@ -73,60 +87,74 @@ class RegistroService:
         return None
 
     def add_registro(self, base_row: Dict, asesorias_payload: List[Dict]) -> None:
-        df_current = self.load_registro()
-        idx = self.find_student_index(df_current, base_row.get("Cédula"), base_row.get("Nombre_Usuario"))
-        if idx is not None:
-            raise ValueError("El estudiante ya existe.")
+        with self._write_lock:
+            df_current = self.load_registro()
+            idx = self.find_student_index(df_current, base_row.get("Cédula"), base_row.get("Nombre_Usuario"))
+            if idx is not None:
+                raise ValueError("El estudiante ya existe.")
 
-        df_new = pd.concat([df_current, pd.DataFrame([base_row])], ignore_index=True)
-        self.save_registro(df_new)
+            df_new = pd.concat([df_current, pd.DataFrame([base_row])], ignore_index=True)
+            self.repo.save_registro(df_new)
 
     def update_registro(self, base_row: Dict, asesorias_payload: List[Dict]) -> None:
-        df_current = self.load_registro()
-        idx = self.find_student_index(df_current, base_row.get("Cédula"), base_row.get("Nombre_Usuario"))
-        if idx is None:
-            raise ValueError("El estudiante no existe.")
+        with self._write_lock:
+            df_current = self.load_registro()
+            idx = self.find_student_index(df_current, base_row.get("Cédula"), base_row.get("Nombre_Usuario"))
+            if idx is None:
+                raise ValueError("El estudiante no existe.")
 
-        for key, value in base_row.items():
-            if key in df_current.columns and self._should_update_value(value):
-                df_current.loc[idx, key] = value
+            for key, value in base_row.items():
+                if key in df_current.columns and self._should_update_value(value):
+                    df_current.loc[idx, key] = value
 
-        self.save_registro(df_current)
+            self.repo.save_registro(df_current)
 
     def delete_registro(self, index_to_delete: int) -> None:
-        df = self.load_registro()
-        df = df.drop(index=index_to_delete).reset_index(drop=True)
-        self.save_registro(df)
+        with self._write_lock:
+            df = self.load_registro()
+            df = df.drop(index=index_to_delete).reset_index(drop=True)
+            self.repo.save_registro(df)
+
+    def update_row_by_index(self, index_to_update: int, row_data: Dict) -> None:
+        with self._write_lock:
+            df = self.load_registro()
+            if index_to_update not in df.index:
+                raise ValueError("El registro seleccionado ya no existe. Recarga la consulta e intenta de nuevo.")
+            for key, value in row_data.items():
+                if key in df.columns and self._should_update_value(value):
+                    df.at[index_to_update, key] = value
+            self.repo.save_registro(df)
 
     def bulk_import(self, df_upload: pd.DataFrame) -> None:
-        df_upload = normalize_registro_df(df_upload.copy())
-        df = self.load_registro()
-        for _, row in df_upload.iterrows():
-            ced = norm_str(row.get("Cédula"))
-            nom = norm_str(row.get("Nombre_Usuario"))
-            if not ced and not nom:
-                continue
+        with self._write_lock:
+            df_upload = normalize_registro_df(df_upload.copy())
+            df = self.load_registro()
+            for _, row in df_upload.iterrows():
+                ced = norm_str(row.get("Cédula"))
+                nom = norm_str(row.get("Nombre_Usuario"))
+                if not ced and not nom:
+                    continue
 
-            base_row = {}
-            for col in df.columns:
-                if col in row.index:
-                    base_row[col] = row.get(col)
+                base_row = {}
+                for col in df.columns:
+                    if col in row.index:
+                        base_row[col] = row.get(col)
 
-            base_row["Paz_y_Salvo"] = norm_str(row.get("Paz_y_Salvo")) or "EN PROCESO"
-            fecha_val = pd.to_datetime(row.get("Fecha"), errors="coerce")
-            if pd.isna(fecha_val):
-                fecha_val = pd.Timestamp(date.today())
-            base_row["Fecha"] = fecha_val
+                base_row["Paz_y_Salvo"] = norm_str(row.get("Paz_y_Salvo")) or "EN PROCESO"
+                fecha_val = pd.to_datetime(row.get("Fecha"), errors="coerce")
+                if pd.isna(fecha_val):
+                    fecha_val = pd.Timestamp(date.today())
+                base_row["Fecha"] = fecha_val
 
-            idx = self.find_student_index(df, ced, nom)
-            if idx is None:
-                df = pd.concat([df, pd.DataFrame([base_row])], ignore_index=True)
-            else:
-                for key, value in base_row.items():
-                    if key in df.columns and self._should_update_value(value):
-                        df.loc[idx, key] = value
+                idx = self.find_student_index(df, ced, nom)
+                if idx is None:
+                    df = pd.concat([df, pd.DataFrame([base_row])], ignore_index=True)
+                else:
+                    for key, value in base_row.items():
+                        if key in df.columns and self._should_update_value(value):
+                            df.loc[idx, key] = value
 
-        self.save_registro(df)
+            self.repo.save_registro(df)
 
     @staticmethod
     def _is_valid_registro(row) -> bool:
@@ -144,6 +172,7 @@ class RegistroService:
         nombre = norm_str(row.get("Nombre_Usuario"))
         return bool(doc or nombre)
 
+    @_write_locked
     def distribute_registros(self, responsables: List[str], seed: Optional[int] = None) -> Dict:
         assignment_col = getattr(config, "ASSIGNMENT_COLUMN", "Asignado_a")
         responsables_clean = [r.strip() for r in responsables if r and r.strip()]
@@ -396,6 +425,7 @@ class RegistroService:
         pending = total - ok
         return {"total": total, "ok": ok, "pending": pending}
 
+    @_write_locked
     def update_normalizacion_estado(self, responsable: str, updates: List[Dict]) -> Dict:
         df = self._load_registro_for_normalizacion()
         id_col = config.REGISTRO_ID_COLUMN
@@ -598,6 +628,7 @@ class RegistroService:
         buffer.seek(0)
         return buffer.read()
 
+    @_write_locked
     def assign_publicacion(self, assigner: str, ids: List[str], target: str) -> int:
         primary_norm = (norm_str(config.PUBLICATION_PRIMARY) or "").lower()
         assigner_norm = (norm_str(assigner) or "").lower()
@@ -687,6 +718,7 @@ class RegistroService:
             )
         return pd.DataFrame(grouped_rows)
 
+    @_write_locked
     def update_publicacion_estado(self, responsable: str, updates: List[Dict]) -> Dict:
         df_all, ready_df = self._load_registro_for_publicacion()
         assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN

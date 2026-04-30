@@ -21,6 +21,7 @@ ROLE_FEATURES: Dict[str, Set[str]] = {
     "administrador": {"*"},
     "direccion": {"register", "consult", "normalizacion", "publicacion", "dashboard"},
     "dirección": {"register", "consult", "normalizacion", "publicacion", "dashboard"},
+    "normalizacion": {"register", "consult", "normalizacion", "dashboard"},
     "referencista": {"register", "consult", "normalizacion", "publicacion", "dashboard"},
     "publicacion": {"register", "consult", "publicacion", "dashboard"},
     "servicios": {"register", "consult", "dashboard"},
@@ -40,7 +41,14 @@ class AuthUser:
         return self.role.strip().lower() == "administrador"
 
 
-_user_repo = UserSheetRepository()
+_user_repo: Optional[UserSheetRepository] = None
+
+
+def _get_user_repo() -> UserSheetRepository:
+    global _user_repo
+    if _user_repo is None:
+        _user_repo = UserSheetRepository()
+    return _user_repo
 
 
 def _normalize_email(email: str) -> str:
@@ -121,7 +129,7 @@ def _password_matches(password: str, stored: str) -> bool:
 
 
 def _load_store() -> Dict[str, dict]:
-    rows = _user_repo.load_users()
+    rows = _get_user_repo().load_users()
     store: Dict[str, dict] = {}
     for row in rows:
         email = _normalize_email(row.get("email", ""))
@@ -156,7 +164,7 @@ def _save_store(store: Dict[str, dict]) -> None:
             }
         )
     records.sort(key=lambda item: item["email"])
-    _user_repo.save_users(records)
+    _get_user_repo().save_users(records)
 
 
 def ensure_user_record(email: str) -> bool:
@@ -198,7 +206,7 @@ def create_reset_token(email: str) -> Optional[str]:
     user = store.get(key)
     if not user:
         return None
-    token = secrets.token_hex(3).upper()
+    token = secrets.token_urlsafe(32)
     user["reset_token"] = token
     user["reset_token_expire"] = int(time.time()) + RESET_TOKEN_TTL
     _save_store(store)
@@ -211,7 +219,9 @@ def reset_password(email: str, token: str, new_password: str) -> bool:
     user = store.get(key)
     if not user or not token:
         return False
-    if user.get("reset_token") != token.upper():
+    stored_token = user.get("reset_token") or ""
+    submitted_token = _clean_password_value(token)
+    if not stored_token or not secrets.compare_digest(stored_token, submitted_token):
         return False
     expire = user.get("reset_token_expire")
     if expire and int(time.time()) > int(expire):

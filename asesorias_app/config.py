@@ -35,7 +35,6 @@ GOOGLE_SHEETS_USERS_RANGE = os.environ.get("GOOGLE_SHEETS_USERS_RANGE", "User!A:
 GOOGLE_SHEETS_FACULTIES_RANGE = os.environ.get("GOOGLE_SHEETS_FACULTIES_RANGE", "UM!A:ZZ")
 GOOGLE_SHEETS_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
 ]
 
 ASSIGNMENT_COLUMN = "Asignado_a"

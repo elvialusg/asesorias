@@ -1041,9 +1041,7 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
             action_cols = st.columns([0.25, 0.25, 0.5])
             with action_cols[0]:
                 if _button("Guardar cambios", key="btn_inline_save", type="primary"):
-                    df_all = service.load_registro()
-                    df_all.loc[inline_idx] = edited_df.iloc[0]
-                    service.save_registro(df_all)
+                    service.update_row_by_index(int(inline_idx), edited_df.iloc[0].to_dict())
                     st.success("Registro actualizado correctamente.")
                     st.session_state.pop("inline_edit_idx", None)
                     st.session_state.pop("inline_edit_data", None)
