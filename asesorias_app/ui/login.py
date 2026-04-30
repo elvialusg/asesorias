@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import base64
 import html
 import time
 from typing import Optional
 
 import streamlit as st
 
+from asesorias_app import config
 from asesorias_app.auth import service as auth_service
 from asesorias_app.auth.service import AuthUser
 
@@ -24,6 +26,22 @@ LOGIN_FAILURES: dict[str, dict[str, float]] = {}
 
 def _login_key(email: str) -> str:
     return (email or "").strip().lower()
+
+
+def _login_logo_html() -> str:
+    logo_path = getattr(config, "LOGIN_LOGO_PATH", None)
+    if not logo_path or not logo_path.exists():
+        return ""
+    encoded_logo = base64.b64encode(logo_path.read_bytes()).decode("ascii")
+    return f"""
+<div class="tf-login-brand">
+    <img
+        src="data:image/png;base64,{encoded_logo}"
+        alt="Biblioteca y Centro de Recursos Universidad de Manizales"
+        class="tf-login-brand__logo"
+    />
+</div>
+"""
 
 
 def get_current_user() -> Optional[AuthUser]:
@@ -79,11 +97,12 @@ def render_login_page() -> None:
         st.session_state["login_password_reset"] = False
 
     st.markdown(
-        """
+        f"""
 <section class="tf-login-hero">
     <div class="tf-login-banner">
         <h1>ControlTesis</h1>
     </div>
+    {_login_logo_html()}
 </section>
 """,
         unsafe_allow_html=True,

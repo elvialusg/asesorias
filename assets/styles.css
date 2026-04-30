@@ -230,24 +230,38 @@ div[data-testid="stExpander"] .streamlit-expanderHeader span {
 /* ---------- LOGIN ---------- */
 .tf-login-hero {
   text-align: center;
-  margin: 2rem auto 1.5rem;
+  margin: 2rem auto 1.25rem;
 }
 
 .tf-login-banner {
   display: inline-block;
-  background: linear-gradient(120deg, #0c3b34, #0f5760, #1c8a73);
-  padding: 2.5rem 3rem;
-  border-radius: 24px;
-  box-shadow: 0 25px 65px rgba(4, 12, 17, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0;
   text-align: center;
 }
 
 .tf-login-banner h1 {
-  margin: 0.35rem 0;
-  font-size: 2.6rem;
+  margin: 0;
+  font-size: clamp(3rem, 7vw, 5.5rem);
   color: var(--text-light);
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 14px 35px rgba(3, 10, 12, 0.38);
+}
+
+.tf-login-brand {
+  display: flex;
+  justify-content: center;
+  margin: 1rem auto 0;
+  padding: 0 1rem;
+}
+
+.tf-login-brand__logo {
+  display: block;
+  width: min(560px, 88vw);
+  max-height: 145px;
+  object-fit: contain;
+  filter: drop-shadow(0 14px 28px rgba(3, 10, 12, 0.35));
 }
 
 .tf-login-overline {
