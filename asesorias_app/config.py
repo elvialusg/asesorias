@@ -18,6 +18,7 @@ SHEET_LISTAS = "Insumo_Listas_Desplegables"
 ASSETS_DIR = BASE_DIR / "assets"
 THEME_CSS = ASSETS_DIR / "styles.css"
 MENU_LOGO_PATH = ASSETS_DIR / "logo_biblioteca_umanizales_blanco.png"
+LOGIN_LOGO_PATH = ASSETS_DIR / "logo_biblioteca_ycr_umanizales_blanco.png"
 
 _DEFAULT_SERVICE_ACCOUNT = BASE_DIR / "asesorias-488318-60432dd8ea86.json"
 # Permite sobreescribir la ubicación mediante la variable de entorno
