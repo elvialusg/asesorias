@@ -206,6 +206,26 @@ div[data-testid="stExpander"] .streamlit-expanderHeader span {
   outline: none !important;
 }
 
+/* Alertas y mensajes de la aplicación */
+div[data-testid="stAlert"] {
+  background: #ffffff !important;
+  border: 1px solid #d7e2df !important;
+  border-left: 6px solid #186f65 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 12px 28px rgba(5, 18, 24, 0.16) !important;
+}
+
+div[data-testid="stAlert"] *,
+div[data-testid="stAlert"] p,
+div[data-testid="stAlert"] span,
+div[data-testid="stAlert"] div {
+  color: #12343a !important;
+}
+
+div[data-testid="stAlert"] svg {
+  fill: #186f65 !important;
+}
+
 .card .stFileUploader label {
   color: var(--text-light) !important;
   font-weight: 600;

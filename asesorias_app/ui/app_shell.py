@@ -807,7 +807,7 @@ def _render_tabs(service: RegistroService, meta: dict, user: AuthUser) -> None:
     menu_col, content_col = st.columns([0.24, 0.76])
     raw_menu = [
         {"key": "register", "label": "Registrar tesis", "feature": "register"},
-        {"key": "consult", "label": "Consultar usuario", "feature": "consult"},
+        {"key": "consult", "label": "Consultar registros", "feature": "consult"},
         {"key": "normalizacion", "label": "Normalización", "feature": "normalizacion"},
         {"key": "publicacion", "label": "Publicación", "feature": "publicacion"},
         {"key": "dashboard", "label": "Métricas", "feature": "dashboard"},
@@ -885,22 +885,24 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                 else:
                     message = modal_data.get("message", "")
                     success = modal_data.get("success")
-                    bg_color = "rgba(16, 185, 129, 0.6)" if success else "rgba(245, 158, 11, 0.7)"
-                    border_color = "#16a34a" if success else "#f97316"
-                    text_color = "#ffffff" if success else "#1f2937"
+                    bg_color = "#ffffff"
+                    border_color = "#16a34a" if success else "#f59e0b"
+                    text_color = "#12343a"
                     modal_id = f"search_modal_{int(expires_at or now_ts)}"
                     components.html(
                         f"""
 <div id="{modal_id}" style="
     padding: 1rem 1.2rem;
     border-radius: 0.65rem;
-    border: 1px solid {border_color};
+    border: 1px solid #d7e2df;
+    border-left: 6px solid {border_color};
     background-color: {bg_color};
     color: {text_color};
     font-weight: 600;
     font-size: 1rem;
     letter-spacing: 0.01em;
     margin-bottom: 0.75rem;
+    box-shadow: 0 12px 28px rgba(5, 18, 24, 0.16);
 ">
     {message}
 </div>
@@ -1303,81 +1305,59 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
         else:
             filtered = df_latest.copy()
 
-        selected_idx = None
-        modify_cols = st.columns([0.75, 0.25])
-        with modify_cols[0]:
-            st.markdown(" ")
-        with modify_cols[1]:
-            if q.strip():
-                qq = q.strip().lower()
-                base_filtered = locals().get("df", filtered).copy()
-                title_col = next(
-                    (
-                        col
-                        for col in ["Título_Trabajo_Grado", "Titulo_Trabajo_Grado"]
-                        if col in base_filtered.columns
-                    ),
-                    None,
-                )
-                if title_col:
-                    title_matches = base_filtered[
-                        base_filtered[title_col].astype(str).str.lower().str.contains(qq, na=False)
-                    ]
-                    if not title_matches.empty:
-                        filtered = pd.concat([filtered, title_matches], ignore_index=False).drop_duplicates()
-
-            if q.strip():
-                qq = q.strip().lower()
-                filtered = filtered[
-                    filtered["Nombre_Usuario"].astype(str).str.lower().str.contains(qq, na=False)
-                    | filtered["Cédula"].astype(str).str.strip().str.contains(qq, na=False)
+        if q.strip():
+            qq = q.strip().lower()
+            base_filtered = locals().get("df", filtered).copy()
+            title_col = next(
+                (
+                    col
+                    for col in ["Título_Trabajo_Grado", "Titulo_Trabajo_Grado"]
+                    if col in base_filtered.columns
+                ),
+                None,
+            )
+            if title_col:
+                title_matches = base_filtered[
+                    base_filtered[title_col].astype(str).str.lower().str.contains(qq, na=False)
                 ]
+                if not title_matches.empty:
+                    filtered = pd.concat([filtered, title_matches], ignore_index=False).drop_duplicates()
 
-            if busqueda_tesis.strip():
-                tesis_query = (
-                    str(busqueda_tesis)
-                    .replace("\u00a0", " ")
-                    .replace("\n", " ")
-                    .replace("\r", " ")
-                    .strip()
-                    .lower()
-                )
-                base_tesis = filtered.copy()
-                filtered = base_tesis[
-                    base_tesis["Título_Trabajo_Grado"]
-                    .astype(str)
-                    .map(
-                        lambda valor: (
-                            str(valor)
-                            .replace("\u00a0", " ")
-                            .replace("\n", " ")
-                            .replace("\r", " ")
-                            .strip()
-                            .lower()
-                        )
+        if q.strip():
+            qq = q.strip().lower()
+            filtered = filtered[
+                filtered["Nombre_Usuario"].astype(str).str.lower().str.contains(qq, na=False)
+                | filtered["Cédula"].astype(str).str.strip().str.contains(qq, na=False)
+            ]
+
+        if busqueda_tesis.strip():
+            tesis_query = (
+                str(busqueda_tesis)
+                .replace("\u00a0", " ")
+                .replace("\n", " ")
+                .replace("\r", " ")
+                .strip()
+                .lower()
+            )
+            base_tesis = filtered.copy()
+            filtered = base_tesis[
+                base_tesis["Título_Trabajo_Grado"]
+                .astype(str)
+                .map(
+                    lambda valor: (
+                        str(valor)
+                        .replace("\u00a0", " ")
+                        .replace("\n", " ")
+                        .replace("\r", " ")
+                        .strip()
+                        .lower()
                     )
-                    .str.contains(tesis_query, regex=False, na=False)
-                ]
-
-            if _button("Modificar registro", key="btn_consulta_modify", disabled=len(filtered) != 1, type="secondary"):
-                if len(filtered) == 1:
-                    selected_idx = int(filtered.index[0])
-                    row = df_latest.loc[selected_idx]
-                    clean_row = row.drop(labels=HIDDEN_COLUMNS, errors="ignore")
-                    ced_value = str(row.get("Cédula") or row.get("C?dula") or "").strip()
-                    st.session_state["editing_target"] = {
-                        "index": selected_idx,
-                        "cedula": ced_value,
-                        "nombre": str(row.get("Nombre_Usuario", "")).strip(),
-                    }
-                    st.session_state["pending_prefill_doc"] = ced_value
-                    st.session_state["inline_edit_idx"] = selected_idx
-                    st.session_state["inline_edit_data"] = clean_row.to_dict()
-                    st.success("Registro listo para modificar (puedes editarlo abajo o en la pestaña Registrar).")
-                    _streamlit_rerun()
+                )
+                .str.contains(tesis_query, regex=False, na=False)
+            ]
 
 
-        st.write(f"Registros encontrados: **{len(filtered)}**")
+        st.caption(f"{len(filtered)} registros en total")
         inline_idx = st.session_state.get("inline_edit_idx")
         if inline_idx is not None:
             st.markdown("### Editar registro seleccionado")
@@ -1393,6 +1373,7 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
                 editable_df,
                 num_rows="fixed",
                 use_container_width=True,
+                hide_index=True,
                 key="inline_editor",
             )
             st.session_state["inline_edit_data"] = edited_df.iloc[0].to_dict()
@@ -1410,20 +1391,6 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
                     st.session_state.pop("inline_edit_idx", None)
                     st.session_state.pop("inline_edit_data", None)
                     _streamlit_rerun()
-        cols_show = [
-            c
-            for c in [
-                "Nombre_Usuario",
-                "C\u00e9dula",
-                "Correo_Electronico",
-                "T\u00edtulo_Trabajo_Grado",
-                "Nombre_Facultad",
-                "Nombre_Programa",
-                "Paz_y_Salvo",
-                "Fecha",
-            ]
-            if c in filtered.columns and c not in HIDDEN_COLUMNS
-        ]
         sort_col = "Fecha" if "Fecha" in filtered.columns else None
         if "Fecha" in filtered.columns:
             filtered["_Fecha_sort"] = pd.to_datetime(filtered["Fecha"], errors="coerce")
@@ -1439,7 +1406,7 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
             if "_Fecha_sort" in df_to_show.columns:
                 df_to_show = df_to_show.drop(columns="_Fecha_sort")
             if not df_to_show.empty:
-                st.dataframe(df_to_show[cols_show], use_container_width=True)
+                st.dataframe(df_to_show, use_container_width=True, hide_index=True, height=220)
             elif inline_idx is not None:
                 st.info("El registro seleccionado se está mostrando en el editor superior.")
         else:
