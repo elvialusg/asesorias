@@ -6,6 +6,7 @@ import base64
 from datetime import date, datetime
 from typing import Dict, List, Optional
 import io
+import unicodedata
 
 import altair as alt
 import pandas as pd
@@ -314,14 +315,75 @@ def _clean_str(value) -> str:
     return "" if text.lower() == "nan" else text
 
 
+def _clean_row_dict(row) -> Dict:
+    data = row.to_dict() if hasattr(row, "to_dict") else dict(row or {})
+    return {key: ("" if _clean_str(value) == "" else value) for key, value in data.items()}
+
+
+def _column_lookup_key(value) -> str:
+    text = utils.fix_text_encoding(str(value), strip=True) or ""
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return "".join(ch for ch in text.lower() if ch.isalnum())
+
+
+def _find_row_key(data: Dict, candidates: List[str]) -> Optional[str]:
+    if not data:
+        return None
+    normalized = {_column_lookup_key(key): key for key in data.keys()}
+    for candidate in candidates:
+        match = normalized.get(_column_lookup_key(candidate))
+        if match:
+            return match
+    return None
+
+
+def _row_get(data: Dict, candidates: List[str], default=""):
+    key = _find_row_key(data, candidates)
+    if key is None:
+        return default
+    return data.get(key, default)
+
+
+def _first_existing_key(data: Dict, candidates: List[str], default: str) -> str:
+    return _find_row_key(data, candidates) or default
+
+
+def _merge_form_values_over_existing(existing_row: Dict, form_row: Dict) -> Dict:
+    merged = dict(existing_row or {})
+    for key, value in form_row.items():
+        existing_is_empty = _clean_str(existing_row.get(key)) == "" if existing_row else True
+        if isinstance(value, str) and (not value.strip() or value == PLACEHOLDER_OPTION):
+            continue
+        if value is None:
+            continue
+        if existing_is_empty and key == "% similitud" and value == 0:
+            continue
+        if existing_is_empty and key == "Fecha":
+            continue
+        try:
+            if pd.isna(value):
+                continue
+        except (TypeError, ValueError):
+            pass
+        merged[key] = value
+    return merged
+
+
 def _set_select_state(key: str, value) -> None:
     st.session_state[key] = _clean_str(value) or PLACEHOLDER_OPTION
+
+
+def _normalize_lookup_text(value) -> str:
+    text = utils.norm_str(value) or ""
+    return " ".join(text.replace("\u00a0", " ").split()).lower()
 
 
 def _all_widget_keys() -> List[str]:
     base = [
         "facultad",
         "programa",
+        "modalidad_programa",
         "titulo",
         "correo",
         "asesor_met_general",
@@ -354,6 +416,10 @@ def _all_widget_keys() -> List[str]:
 def _reset_form(meta: dict) -> None:
     for key in _all_widget_keys():
         st.session_state.pop(key, None)
+    st.session_state.pop("registro_en_edicion", None)
+    st.session_state.pop("modo_edicion_registro", None)
+    st.session_state.pop("indice_registro_en_edicion", None)
+    st.session_state.pop("editing_target", None)
 
     st.session_state["asesorias_n"] = 1
     st.session_state["cedula"] = ""
@@ -370,6 +436,7 @@ def _reset_form(meta: dict) -> None:
 
     st.session_state["facultad"] = PLACEHOLDER_OPTION
     st.session_state["programa"] = PLACEHOLDER_OPTION
+    st.session_state["modalidad_programa"] = PLACEHOLDER_OPTION
 
     st.session_state["rev_inicial"] = PLACEHOLDER_OPTION
     st.session_state["rev_plantilla"] = PLACEHOLDER_OPTION
@@ -394,6 +461,165 @@ def _ensure_dynamic_defaults(meta: dict) -> None:
         st.session_state.setdefault(f"extra_doc_{i}", "")
         st.session_state.setdefault(f"extra_name_{i}", "")
         st.session_state.setdefault(f"extra_email_{i}", "")
+
+
+def _set_select_if_valid(key: str, value, options: List[str]) -> None:
+    text = _clean_str(value)
+    if text in options:
+        st.session_state[key] = text
+        return
+    normalized_text = _normalize_lookup_text(text)
+    match = next((option for option in options if _normalize_lookup_text(option) == normalized_text), None)
+    st.session_state[key] = match or PLACEHOLDER_OPTION
+
+
+def _prefill_form_from_registro(row, row_index: int, meta: dict, lists: dict) -> None:
+    _reset_form(meta)
+    registro = _clean_row_dict(row)
+    st.session_state["registro_en_edicion"] = registro
+    st.session_state["modo_edicion_registro"] = True
+    st.session_state["indice_registro_en_edicion"] = int(row_index)
+
+    ced_value = _clean_str(_row_get(registro, ["Cédula", "C?dula", "Cedula", "Documento", "Documento/Id", "ID"]))
+    st.session_state["cedula"] = ced_value
+    st.session_state["nombre_usuario"] = _clean_str(_row_get(registro, ["Nombre_Usuario", "Nombre Usuario", "Nombre"]))
+    st.session_state["correo"] = _clean_str(
+        _row_get(registro, ["Correo_Electronico", "Correo electrónico", "Correo electronico", "Email", "E-mail", "Correo"])
+    )
+    st.session_state["titulo"] = _clean_str(
+        _row_get(registro, ["Título_Trabajo_Grado", "Titulo_Trabajo_Grado", "Título trabajo de grado", "Titulo trabajo de grado"])
+    )
+    st.session_state["obs"] = _clean_str(_row_get(registro, ["Observaciones", "Observacion", "Observación"]))
+
+    asesor_value = _clean_str(
+        _row_get(
+            registro,
+            [
+                "Asesor_Metodológico",
+                "Asesor_Metodologico",
+                "Asesor metodológico",
+                "Asesor metodologico",
+                "Detalle_Asesor_Metodologico",
+                "Historial_Asesor_Metodologico",
+            ],
+        )
+    )
+    if asesor_value and " | " in asesor_value:
+        asesor_value = asesor_value.split(" | ")[0].strip()
+    st.session_state["asesor_met_general"] = asesor_value
+
+    _set_select_if_valid(
+        "modalidad_programa",
+        _row_get(registro, ["Modalidad del Programa", "Modalidad Programa", "Modalidad_del_Programa", "Modalidad"]),
+        [PLACEHOLDER_OPTION, "Virtual", "Presencial"],
+    )
+    _set_select_if_valid("paz_y_salvo", _row_get(registro, ["Paz_y_Salvo", "Paz y Salvo"]), PAZ_OPTIONS_WITH_PLACEHOLDER)
+    _set_select_if_valid("ok_ref", _row_get(registro, ["Ok_Referencistas", "OK Referencistas"]), STATUS_OPTIONS_WITH_PLACEHOLDER)
+    _set_select_if_valid("ok_serv", _row_get(registro, ["OK_Servicios", "OK Servicios"]), STATUS_OPTIONS_WITH_PLACEHOLDER)
+
+    rev_inicial_opts = [PLACEHOLDER_OPTION] + list(lists.get("Revisión Inicial") or [])
+    _set_select_if_valid("rev_inicial", _row_get(registro, ["Revisión Inicial", "Revision Inicial"]), rev_inicial_opts)
+    rev_pl_opts = [PLACEHOLDER_OPTION] + list(lists.get("Revisión de Plantilla") or lists.get("Revisión plantilla") or [])
+    _set_select_if_valid("rev_plantilla", _row_get(registro, ["Revisión plantilla", "Revisión de Plantilla", "Revision plantilla"]), rev_pl_opts)
+    esc_turnitin_opts = [PLACEHOLDER_OPTION] + list(lists.get("Escaneado Turnitin") or [])
+    _set_select_if_valid("esc_turnitin", _row_get(registro, ["Escaneado Turnitin"]), esc_turnitin_opts)
+    aprob_sim_opts = [PLACEHOLDER_OPTION] + list(lists.get("Aprobados PyS") or [])
+    _set_select_if_valid("aprob_sim", _row_get(registro, ["Aprobación_Similitud", "Aprobacion_Similitud"]), aprob_sim_opts)
+
+    try:
+        st.session_state["similitud"] = max(0, min(100, int(float(_row_get(registro, ["% similitud", "Similitud"])))))
+    except (TypeError, ValueError):
+        st.session_state["similitud"] = 0
+
+    try:
+        fecha_dt = pd.to_datetime(_row_get(registro, ["Fecha"]), errors="coerce")
+        st.session_state["fecha"] = fecha_dt.date() if not pd.isna(fecha_dt) else date.today()
+    except Exception:
+        st.session_state["fecha"] = date.today()
+
+    fac_norm = _clean_str(_row_get(registro, ["Nombre_Facultad", "Facultad"]))
+    fac_display = meta["fac_norm_map"].get(fac_norm)
+    st.session_state["facultad"] = fac_display or fac_norm or PLACEHOLDER_OPTION
+    st.session_state["programa"] = _clean_str(_row_get(registro, ["Nombre_Programa", "Programa"])) or PLACEHOLDER_OPTION
+    st.session_state["editing_target"] = {
+        "index": int(row_index),
+        "cedula": ced_value,
+        "nombre": _clean_str(_row_get(registro, ["Nombre_Usuario", "Nombre Usuario", "Nombre"])),
+    }
+
+
+def _find_registro_for_edit(service: RegistroService, cedula: str, nombre: str, titulo: str):
+    df = service.load_registro()
+    if df.empty:
+        return None, None
+
+    ced_query = _normalize_lookup_text(cedula)
+    if ced_query:
+        ced_col = RegistroService._cedula_column(df)
+        if ced_col:
+            matches = df[df[ced_col].fillna("").astype(str).map(_normalize_lookup_text) == ced_query]
+            if not matches.empty:
+                idx = int(matches.index[0])
+                return idx, df.loc[idx]
+
+    name_query = _normalize_lookup_text(nombre)
+    if name_query and "Nombre_Usuario" in df.columns:
+        names = df["Nombre_Usuario"].fillna("").astype(str).map(_normalize_lookup_text)
+        matches = df[names == name_query]
+        if matches.empty:
+            matches = df[names.str.contains(name_query, regex=False, na=False)]
+        if not matches.empty:
+            idx = int(matches.index[0])
+            return idx, df.loc[idx]
+
+    title_query = _normalize_lookup_text(titulo)
+    thesis_col = RegistroService._tesis_column(df)
+    if title_query and thesis_col:
+        titles = df[thesis_col].fillna("").astype(str).map(_normalize_lookup_text)
+        matches = df[titles == title_query]
+        if matches.empty:
+            matches = df[titles.str.contains(title_query, regex=False, na=False)]
+        if not matches.empty:
+            idx = int(matches.index[0])
+            return idx, df.loc[idx]
+
+    return None, None
+
+
+def _load_existing_registro_for_edit(service: RegistroService, meta: dict, lists: dict) -> None:
+    try:
+        edit_idx, edit_row = _find_registro_for_edit(
+            service,
+            st.session_state.get("cedula", ""),
+            st.session_state.get("nombre_usuario", ""),
+            st.session_state.get("titulo", ""),
+        )
+    except Exception as exc:
+        st.session_state["search_modal"] = {
+            "message": f"No se pudo consultar el registro: {exc}",
+            "success": False,
+            "expires_at": datetime.utcnow().timestamp() + 10,
+        }
+        return
+
+    if edit_row is None:
+        st.session_state["search_modal"] = {
+            "message": "El registro no existe.",
+            "success": False,
+            "expires_at": datetime.utcnow().timestamp() + 10,
+        }
+        return
+
+    _prefill_form_from_registro(edit_row, edit_idx, meta, lists)
+    edit_row_dict = _clean_row_dict(edit_row)
+    edit_name = _clean_str(_row_get(edit_row_dict, ["Nombre_Usuario", "Nombre Usuario", "Nombre"])) or _clean_str(
+        _row_get(edit_row_dict, ["Cédula", "C?dula", "Cedula", "Documento", "Documento/Id", "ID"])
+    )
+    st.session_state["search_modal"] = {
+        "message": f"Registro cargado para modificar: {edit_name}.",
+        "success": True,
+        "expires_at": datetime.utcnow().timestamp() + 10,
+    }
 
 
 def _add_asesoria():
@@ -592,7 +818,7 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
             pending_doc = st.session_state.pop("pending_prefill_doc", None)
             if pending_doc:
                 st.session_state["cedula"] = pending_doc
-                _autofill_by_cedula(meta, service, doc_key="cedula", name_key="nombre_usuario", show_modal=False)
+                _load_existing_registro_for_edit(service, meta, lists)
             st.subheader("Formulario de registro")
             modal_data = st.session_state.get("search_modal")
             if modal_data:
@@ -639,6 +865,8 @@ setTimeout(function(){{
                 st.info(f"Editando registro existente: {edit_name}. Guarda los cambios para actualizarlo.")
             fac_names = df_fac["Nombre_Facultad"].dropna().astype(str).tolist()
             fac_options = [PLACEHOLDER_OPTION] + fac_names
+            if st.session_state.get("facultad") not in fac_options:
+                st.session_state["facultad"] = PLACEHOLDER_OPTION
             fac_display = st.selectbox("Facultad", fac_options, key="facultad")
 
             if fac_display == PLACEHOLDER_OPTION:
@@ -706,7 +934,7 @@ setTimeout(function(){{
                     "Documento/Id *",
                     placeholder="Ej: 1032331000",
                     key="cedula",
-                    on_change=lambda: _autofill_by_cedula(meta, service),
+                    on_change=lambda: _load_existing_registro_for_edit(service, meta, lists),
                 )
             with c2:
                 primary_name_input = st.text_input(
@@ -717,7 +945,7 @@ setTimeout(function(){{
             titulo = st.text_input(
                 "Título trabajo de grado",
                 key="titulo",
-                on_change=lambda: _warn_if_tesis_exists(service),
+                on_change=lambda: _load_existing_registro_for_edit(service, meta, lists),
             )
             fecha = st.date_input("Fecha", key="fecha", format="DD/MM/YYYY")
 
@@ -792,6 +1020,7 @@ setTimeout(function(){{
                 "Nombre_Facultad": utils.normalize_fac_name(fac_value) if fac_value else "",
                 "Nombre_Programa": prog_value,
                 "Modalidad del Programa": utils.norm_str(modalidad_programa),
+                "Asesor metodológico": utils.norm_str(asesor_met_general),
                 "Correo_Electronico": utils.norm_str(correo),
                 "Título_Trabajo_Grado": utils.norm_str(titulo),
                 "Fecha": pd.to_datetime(fecha),
@@ -837,7 +1066,20 @@ setTimeout(function(){{
                 saving = st.session_state.get("saving", False)
                 if saving:
                     st.info("Guardando registro...")
-                if _button("Guardar registro", type="primary", disabled=saving):
+                action_cols = st.columns([0.24, 0.24, 0.52])
+                with action_cols[0]:
+                    save_clicked = _button("Guardar registro", type="primary", disabled=saving)
+                with action_cols[1]:
+                    modify_clicked = _button(
+                        "Modificar registro",
+                        key="btn_register_load_edit",
+                        type="secondary",
+                        disabled=saving,
+                    )
+                if modify_clicked:
+                    _load_existing_registro_for_edit(service, meta, lists)
+                    _streamlit_rerun()
+                if save_clicked:
                     first_doc = (primary_doc_raw or "").strip()
                     first_name = (primary_name_raw or "").strip()
                     first_email = (primary_email_raw or "").strip()
@@ -851,15 +1093,61 @@ setTimeout(function(){{
                         st.session_state["saving"] = True
                         successes = 0
                         errors = []
-                        is_editing = bool(st.session_state.get("editing_target"))
+                        is_editing = bool(
+                            st.session_state.get("editing_target")
+                            or st.session_state.get("modo_edicion_registro")
+                        )
                         with st.spinner("Guardando registro..."):
                             if is_editing:
-                                row = base_row_template.copy()
-                                row["C\xe9dula"] = utils.norm_str(primary_doc_raw)
+                                editing_target = st.session_state.get("editing_target") or {}
+                                target_index = (
+                                    editing_target.get("index")
+                                    if editing_target.get("index") is not None
+                                    else st.session_state.get("indice_registro_en_edicion")
+                                )
+                                existing_row = st.session_state.get("registro_en_edicion") or {}
+                                original_title = _row_get(
+                                    existing_row,
+                                    ["Título_Trabajo_Grado", "Titulo_Trabajo_Grado", "Título trabajo de grado", "Titulo trabajo de grado"],
+                                )
+                                row = _merge_form_values_over_existing(existing_row, base_row_template)
+                                cedula_col = _first_existing_key(row, ["Cédula", "C?dula", "Cedula"], "Cédula")
+                                title_col = _first_existing_key(
+                                    row,
+                                    ["Título_Trabajo_Grado", "Titulo_Trabajo_Grado"],
+                                    "Título_Trabajo_Grado",
+                                )
+                                asesor_col = _first_existing_key(
+                                    row,
+                                    [
+                                        "Asesor_Metodológico",
+                                        "Asesor_Metodologico",
+                                        "Asesor metodológico",
+                                        "Asesor metodologico",
+                                    ],
+                                    "Asesor metodológico",
+                                )
+                                row[cedula_col] = utils.norm_str(primary_doc_raw)
                                 row["Nombre_Usuario"] = utils.norm_str(primary_name_raw)
                                 row["Correo_Electronico"] = utils.norm_str(primary_email_raw)
+                                row[title_col] = utils.norm_str(titulo)
+                                if asesor_col in row:
+                                    row[asesor_col] = utils.norm_str(asesor_met_general)
                                 try:
-                                    service.update_registro(row, asesorias_payload)
+                                    if target_index is None:
+                                        service.update_registro(row, asesorias_payload)
+                                    else:
+                                        service.update_row_by_index(int(target_index), row)
+                                    service.update_field_for_tesis(
+                                        original_title or titulo,
+                                        [
+                                            "Asesor metodológico",
+                                            "Asesor_Metodológico",
+                                            "Asesor_Metodologico",
+                                            "Asesor metodologico",
+                                        ],
+                                        asesor_met_general,
+                                    )
                                     successes = 1
                                 except ValueError as exc:
                                     errors.append(str(exc))
@@ -904,6 +1192,9 @@ setTimeout(function(){{
                         if successes and not errors:
                             if is_editing:
                                 st.session_state.pop("editing_target", None)
+                                st.session_state.pop("registro_en_edicion", None)
+                                st.session_state.pop("modo_edicion_registro", None)
+                                st.session_state.pop("indice_registro_en_edicion", None)
                             st.session_state["reset_pending"] = True
                             _streamlit_rerun()
 
