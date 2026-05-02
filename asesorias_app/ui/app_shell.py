@@ -357,8 +357,6 @@ def _merge_form_values_over_existing(existing_row: Dict, form_row: Dict) -> Dict
             continue
         if value is None:
             continue
-        if existing_is_empty and key == "% similitud" and value == 0:
-            continue
         if existing_is_empty and key == "Fecha":
             continue
         try:
@@ -776,6 +774,17 @@ def _warn_if_tesis_exists(service: RegistroService, title_key: str = "titulo") -
     }
 
 
+def _open_register_page_clean(meta: dict) -> None:
+    _reset_form(meta)
+    st.session_state["init_done"] = True
+    st.session_state["reset_pending"] = False
+    st.session_state["current_page"] = "register"
+    try:
+        st.query_params.update({"page": "register"})
+    except Exception:
+        pass
+
+
 def _render_tabs(service: RegistroService, meta: dict, user: AuthUser) -> None:
     login_ui.render_session_header(user)
 
@@ -821,27 +830,19 @@ def _render_tabs(service: RegistroService, meta: dict, user: AuthUser) -> None:
         _inject_sidebar_menu_styles()
         _render_menu_logo()
         with st.expander("Menú", expanded=True):
-            labels = [item["label"] for item in available_menu]
-            keys = [item["key"] for item in available_menu]
             current_key = st.session_state.get("current_page", default_page)
-            try:
-                current_index = keys.index(current_key)
-            except ValueError:
-                current_index = 0
-            selected_label = st.radio(
-                "Navegación",
-                labels,
-                index=current_index,
-                label_visibility="collapsed",
-                key="menu_radio",
-            )
-            selected_key = keys[labels.index(selected_label)]
-            if selected_key != current_key:
-                st.session_state["current_page"] = selected_key
-                try:
-                    st.query_params.update({"page": selected_key})
-                except Exception:
-                    pass
+            for item in available_menu:
+                button_type = "primary" if item["key"] == current_key else "secondary"
+                if _button(item["label"], key=f"menu_btn_{item['key']}", type=button_type, use_container_width=True):
+                    if item["key"] == "register":
+                        _open_register_page_clean(meta)
+                    else:
+                        st.session_state["current_page"] = item["key"]
+                        try:
+                            st.query_params.update({"page": item["key"]})
+                        except Exception:
+                            pass
+                    _streamlit_rerun()
 
     with content_col:
         current = st.session_state.get("current_page", "register")
@@ -1203,6 +1204,18 @@ setTimeout(function(){{
                                         shared_row_updates,
                                     )
                                     successes = 1
+                                    for _, doc_val, name_val, email_val in students_to_save[1:]:
+                                        if not doc_val and not name_val:
+                                            continue
+                                        new_student_row = base_row_template.copy()
+                                        new_student_row["C\xe9dula"] = doc_val
+                                        new_student_row["Nombre_Usuario"] = name_val
+                                        new_student_row["Correo_Electronico"] = email_val
+                                        try:
+                                            service.add_registro(new_student_row, asesorias_payload)
+                                            successes += 1
+                                        except ValueError as exc:
+                                            errors.append(f"{name_val or doc_val}: {exc}")
                                 except ValueError as exc:
                                     errors.append(str(exc))
                             else:
