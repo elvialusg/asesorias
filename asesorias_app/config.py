@@ -85,6 +85,7 @@ REGISTRO_COLUMNS = [
     "Nombre_Facultad",
     "Nombre_Programa",
     "Modalidad del Programa",
+    "Asesor metodológico",
     "Título_Trabajo_Grado",
     "Fecha",
     "Revisión Inicial",
@@ -121,7 +122,6 @@ REMOVED_REGISTRO_COLUMNS = [
     "Detalle_Asesor_Metodologico",
     "Asesor_Recursos_Académicos",
     "Nombre_Asesoría",
-    "Asesor_Metodológico",
 ]
 
 COLUMN_ALIASES = {
@@ -130,4 +130,7 @@ COLUMN_ALIASES = {
     "Cedula": "Cédula",
     "Nombre usuario": "Nombre_Usuario",
     "Nombre_usuario": "Nombre_Usuario",
+    "Asesor_Metodológico": "Asesor metodológico",
+    "Asesor_Metodologico": "Asesor metodológico",
+    "Asesor metodologico": "Asesor metodológico",
 }

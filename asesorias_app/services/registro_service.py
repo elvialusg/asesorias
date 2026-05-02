@@ -125,6 +125,43 @@ class RegistroService:
                     df.at[index_to_update, key] = value
             self.repo.save_registro(df)
 
+    def update_field_for_tesis(self, thesis_value, field_candidates: List[str], value) -> int:
+        return self.update_fields_for_tesis(thesis_value, {field_candidates[0]: value})
+
+    def update_fields_for_tesis(self, thesis_value, field_values: Dict) -> int:
+        clean_thesis = norm_str(thesis_value)
+        if not clean_thesis:
+            return 0
+        cleaned_values = {
+            key: value
+            for key, value in (field_values or {}).items()
+            if self._should_update_value(value)
+        }
+        if not cleaned_values:
+            return 0
+        with self._write_lock:
+            df = self.load_registro()
+            thesis_col = self._tesis_column(df)
+            if not thesis_col or thesis_col not in df.columns:
+                return 0
+
+            thesis_lookup = self._lookup_text(clean_thesis)
+            matches = df[thesis_col].fillna("").astype(str).map(self._lookup_text) == thesis_lookup
+            if not bool(matches.any()):
+                return 0
+
+            updated_any = False
+            for key, value in cleaned_values.items():
+                field_col = self._match_existing_column(df.columns.tolist(), [key])
+                if not field_col:
+                    continue
+                df.loc[matches, field_col] = value
+                updated_any = True
+            if not updated_any:
+                return 0
+            self.repo.save_registro(df)
+            return int(matches.sum())
+
     def bulk_import(self, df_upload: pd.DataFrame) -> None:
         with self._write_lock:
             df_upload = normalize_registro_df(df_upload.copy())
@@ -297,6 +334,26 @@ class RegistroService:
             lowered = col.lower()
             if any(keyword in lowered for keyword in keywords):
                 return col
+        return None
+
+    @staticmethod
+    def _lookup_text(value) -> str:
+        text = norm_str(value) or ""
+        return " ".join(text.replace("\u00a0", " ").split()).lower()
+
+    @staticmethod
+    def _match_existing_column(columns: List[str], candidates: List[str]) -> Optional[str]:
+        normalized_columns = {
+            (fix_text_encoding(col, strip=True) or "").lower().replace(" ", "").replace("_", ""): col
+            for col in columns
+        }
+        for candidate in candidates:
+            normalized_candidate = (
+                (fix_text_encoding(candidate, strip=True) or "").lower().replace(" ", "").replace("_", "")
+            )
+            match = normalized_columns.get(normalized_candidate)
+            if match:
+                return match
         return None
 
     @staticmethod
