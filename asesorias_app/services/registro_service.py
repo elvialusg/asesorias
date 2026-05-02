@@ -126,24 +126,39 @@ class RegistroService:
             self.repo.save_registro(df)
 
     def update_field_for_tesis(self, thesis_value, field_candidates: List[str], value) -> int:
-        clean_value = norm_str(value)
+        return self.update_fields_for_tesis(thesis_value, {field_candidates[0]: value})
+
+    def update_fields_for_tesis(self, thesis_value, field_values: Dict) -> int:
         clean_thesis = norm_str(thesis_value)
-        if not clean_value or not clean_thesis:
+        if not clean_thesis:
+            return 0
+        cleaned_values = {
+            key: value
+            for key, value in (field_values or {}).items()
+            if self._should_update_value(value)
+        }
+        if not cleaned_values:
             return 0
         with self._write_lock:
             df = self.load_registro()
             thesis_col = self._tesis_column(df)
             if not thesis_col or thesis_col not in df.columns:
                 return 0
-            field_col = self._match_existing_column(df.columns.tolist(), field_candidates)
-            if not field_col:
-                return 0
 
             thesis_lookup = self._lookup_text(clean_thesis)
             matches = df[thesis_col].fillna("").astype(str).map(self._lookup_text) == thesis_lookup
             if not bool(matches.any()):
                 return 0
-            df.loc[matches, field_col] = clean_value
+
+            updated_any = False
+            for key, value in cleaned_values.items():
+                field_col = self._match_existing_column(df.columns.tolist(), [key])
+                if not field_col:
+                    continue
+                df.loc[matches, field_col] = value
+                updated_any = True
+            if not updated_any:
+                return 0
             self.repo.save_registro(df)
             return int(matches.sum())
 

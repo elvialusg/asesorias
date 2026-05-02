@@ -370,6 +370,61 @@ def _merge_form_values_over_existing(existing_row: Dict, form_row: Dict) -> Dict
     return merged
 
 
+def _shared_tesis_form_fields() -> List[str]:
+    return [
+        "Nombre_Facultad",
+        "Nombre_Programa",
+        "Modalidad del Programa",
+        "Asesor metodológico",
+        "Título_Trabajo_Grado",
+        "Fecha",
+        "Revisión Inicial",
+        "Revisión plantilla",
+        "Ok_Referencistas",
+        "OK_Servicios",
+        "Observaciones",
+        "Escaneado Turnitin",
+        "% similitud",
+        "Aprobación_Similitud",
+        "Paz_y_Salvo",
+    ]
+
+
+def _with_shared_tesis_values(service: RegistroService, row) -> Dict:
+    registro = _clean_row_dict(row)
+    title_value = _row_get(
+        registro,
+        ["Título_Trabajo_Grado", "Titulo_Trabajo_Grado", "Título trabajo de grado", "Titulo trabajo de grado"],
+    )
+    if not _clean_str(title_value):
+        return registro
+    try:
+        df = service.load_registro()
+    except Exception:
+        return registro
+    thesis_col = RegistroService._tesis_column(df)
+    if not thesis_col or thesis_col not in df.columns:
+        return registro
+    title_lookup = _normalize_lookup_text(title_value)
+    matches = df[df[thesis_col].fillna("").astype(str).map(_normalize_lookup_text) == title_lookup]
+    if matches.empty:
+        return registro
+
+    merged = dict(registro)
+    for field in _shared_tesis_form_fields():
+        target_key = _find_row_key(merged, [field]) or field
+        if _clean_str(merged.get(target_key)):
+            continue
+        source_key = _find_row_key({col: None for col in matches.columns}, [field])
+        if not source_key:
+            continue
+        for value in matches[source_key].tolist():
+            if _clean_str(value):
+                merged[target_key] = value
+                break
+    return merged
+
+
 def _set_select_state(key: str, value) -> None:
     st.session_state[key] = _clean_str(value) or PLACEHOLDER_OPTION
 
@@ -610,8 +665,8 @@ def _load_existing_registro_for_edit(service: RegistroService, meta: dict, lists
         }
         return
 
-    _prefill_form_from_registro(edit_row, edit_idx, meta, lists)
-    edit_row_dict = _clean_row_dict(edit_row)
+    edit_row_dict = _with_shared_tesis_values(service, edit_row)
+    _prefill_form_from_registro(edit_row_dict, edit_idx, meta, lists)
     edit_name = _clean_str(_row_get(edit_row_dict, ["Nombre_Usuario", "Nombre Usuario", "Nombre"])) or _clean_str(
         _row_get(edit_row_dict, ["Cédula", "C?dula", "Cedula", "Documento", "Documento/Id", "ID"])
     )
@@ -1138,15 +1193,14 @@ setTimeout(function(){{
                                         service.update_registro(row, asesorias_payload)
                                     else:
                                         service.update_row_by_index(int(target_index), row)
-                                    service.update_field_for_tesis(
+                                    shared_row_updates = {
+                                        key: value
+                                        for key, value in base_row_template.items()
+                                        if key != "Correo_Electronico"
+                                    }
+                                    service.update_fields_for_tesis(
                                         original_title or titulo,
-                                        [
-                                            "Asesor metodológico",
-                                            "Asesor_Metodológico",
-                                            "Asesor_Metodologico",
-                                            "Asesor metodologico",
-                                        ],
-                                        asesor_met_general,
+                                        shared_row_updates,
                                     )
                                     successes = 1
                                 except ValueError as exc:
