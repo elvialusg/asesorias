@@ -876,6 +876,19 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
                 st.session_state["cedula"] = pending_doc
                 _load_existing_registro_for_edit(service, meta, lists)
             st.subheader("Formulario de registro")
+            tutorial_pdf_path = config.BASE_DIR / "Tutorial Control Tesis.pdf"
+            if tutorial_pdf_path.exists():
+                tutorial_cols = st.columns([0.58, 0.42])
+                with tutorial_cols[0]:
+                    st.caption("Tutorial de uso de la aplicación disponible en PDF.")
+                with tutorial_cols[1]:
+                    st.download_button(
+                        "Descargar tutorial PDF",
+                        data=tutorial_pdf_path.read_bytes(),
+                        file_name="Tutorial Control Tesis.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
             modal_data = st.session_state.get("search_modal")
             if modal_data:
                 expires_at = modal_data.get("expires_at")
