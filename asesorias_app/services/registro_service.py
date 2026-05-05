@@ -145,6 +145,7 @@ class RegistroService:
                 if key in df.columns and self._should_update_value(value):
                     safe_value = safe_sheet_value(value)
                     if safe_value:
+                        df[key] = df[key].astype("object")
                         df.at[index_to_update, key] = safe_value
             self.repo.save_registro(df)
 
@@ -710,10 +711,6 @@ class RegistroService:
 
     @_write_locked
     def assign_publicacion(self, assigner: str, ids: List[str], target: str) -> int:
-        primary_norm = (norm_str(config.PUBLICATION_PRIMARY) or "").lower()
-        assigner_norm = (norm_str(assigner) or "").lower()
-        if assigner_norm != primary_norm:
-            raise PermissionError("Solo la responsable principal puede reasignar publicaciones.")
         target_clean = norm_str(target)
         allowed = [norm_str(r) for r in config.PUBLICATION_RESPONSIBLES]
         if target_clean not in allowed:
