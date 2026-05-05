@@ -1235,10 +1235,12 @@ setTimeout(function(){{
                                         try:
                                             service.add_registro(new_student_row, asesorias_payload)
                                             successes += 1
-                                        except ValueError as exc:
+                                        except Exception as exc:
+                                            print("ERROR AL AGREGAR ESTUDIANTE ADICIONAL:", repr(exc))
                                             errors.append(f"{name_val or doc_val}: {exc}")
-                                except ValueError as exc:
-                                    errors.append(str(exc))
+                                except Exception as exc:
+                                    print("ERROR AL GUARDAR REGISTRO:", repr(exc))
+                                    errors.append("No se pudo guardar el registro. Revisa los logs.")
                             else:
                                 for _, doc_val, name_val, email_val in students_to_save:
                                     if not doc_val and not name_val:
@@ -1250,7 +1252,8 @@ setTimeout(function(){{
                                     try:
                                         service.add_registro(row, asesorias_payload)
                                         successes += 1
-                                    except ValueError as exc:
+                                    except Exception as exc:
+                                        print("ERROR AL GUARDAR REGISTRO NUEVO:", repr(exc))
                                         errors.append(f"{name_val or doc_val}: {exc}")
                         st.session_state["saving"] = False
                         if successes:
@@ -1399,12 +1402,17 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
             action_cols = st.columns([0.25, 0.25, 0.5])
             with action_cols[0]:
                 if _button("Guardar cambios", key="btn_inline_save", type="primary"):
-                    service.update_row_by_index(int(inline_idx), edited_df.iloc[0].to_dict())
-                    st.success("Registro actualizado correctamente.")
-                    st.session_state.pop("inline_edit_idx", None)
-                    st.session_state.pop("inline_edit_data", None)
-                    st.session_state["reset_pending"] = True
-                    _streamlit_rerun()
+                    try:
+                        service.update_row_by_index(int(inline_idx), edited_df.iloc[0].to_dict())
+                    except Exception as exc:
+                        print("ERROR AL GUARDAR EDICION EN CONSULTA:", repr(exc))
+                        st.error("No se pudo guardar el registro. Revisa los logs.")
+                    else:
+                        st.success("Registro actualizado correctamente.")
+                        st.session_state.pop("inline_edit_idx", None)
+                        st.session_state.pop("inline_edit_data", None)
+                        st.session_state["reset_pending"] = True
+                        _streamlit_rerun()
             with action_cols[1]:
                 if _button("Cancelar edición", key="btn_inline_cancel", type="secondary"):
                     st.session_state.pop("inline_edit_idx", None)
