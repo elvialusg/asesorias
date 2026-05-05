@@ -41,6 +41,73 @@ BUTTON_STYLE_STATE_KEY = "_button_styles_applied"
 ADD_BUTTON_STYLE_STATE_KEY = "_add_student_button_style"
 
 
+def _install_streamlit_cache_modal_guard() -> None:
+    components.html(
+        """
+<script>
+(function () {
+    const parentWindow = window.parent;
+    const parentDocument = parentWindow.document;
+
+    if (parentWindow.__controlTesisClearCacheGuardInstalled) {
+        return;
+    }
+    parentWindow.__controlTesisClearCacheGuardInstalled = true;
+
+    function isEditableTarget(target) {
+        if (!target) {
+            return false;
+        }
+        const tag = (target.tagName || "").toLowerCase();
+        return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+    }
+
+    parentWindow.addEventListener(
+        "keydown",
+        function (event) {
+            const key = (event.key || "").toLowerCase();
+            if (key === "c" && !event.ctrlKey && !event.metaKey && !event.altKey && !isEditableTarget(event.target)) {
+                event.stopImmediatePropagation();
+                event.preventDefault();
+            }
+        },
+        true
+    );
+
+    function closeStreamlitCacheDialog() {
+        const title = "Clear " + "caches";
+        const bodyMarker = "function " + "caches";
+        const dialogs = Array.from(parentDocument.querySelectorAll('[role="dialog"]'));
+        for (const dialog of dialogs) {
+            const text = dialog.innerText || "";
+            if (!text.includes(title) || !text.includes(bodyMarker)) {
+                continue;
+            }
+            const buttons = Array.from(dialog.querySelectorAll("button"));
+            const closeButton =
+                dialog.querySelector('button[aria-label="Close"], button[aria-label="close"]') ||
+                buttons.find((button) => ["Cancel", "×", "x"].includes((button.innerText || "").trim()));
+            if (closeButton) {
+                closeButton.click();
+            } else {
+                dialog.remove();
+            }
+        }
+    }
+
+    closeStreamlitCacheDialog();
+    new MutationObserver(closeStreamlitCacheDialog).observe(parentDocument.body, {
+        childList: true,
+        subtree: true
+    });
+})();
+</script>
+""",
+        height=0,
+        width=0,
+    )
+
+
 def _style_dashboard_chart(chart):
     return (
         chart
@@ -2235,6 +2302,7 @@ def _tab_dashboard(tab, service: RegistroService, meta: dict) -> None:
 
 def render_app() -> None:
     load_theme()
+    _install_streamlit_cache_modal_guard()
     user = login_ui.get_current_user()
     if not user:
         login_ui.render_login_page()
