@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 from asesorias_app import config
-from asesorias_app.core.utils import fix_text_encoding, norm_str, normalize_fac_name
+from asesorias_app.core.utils import fix_text_encoding, formatear_fecha_segura, norm_str, normalize_fac_name
 from asesorias_app.repositories.excel_repository import ExcelRepository, normalize_registro_df
 from asesorias_app.repositories.google_sheets_repository import GoogleSheetsRepository
 
@@ -516,7 +516,7 @@ class RegistroService:
         date_col = config.NORMALIZATION_DATE_COLUMN
         obs_col = config.NORMALIZATION_OBS_COLUMN
         updated = 0
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = formatear_fecha_segura(datetime.utcnow(), "%Y-%m-%d %H:%M:%S")
         target_name = (norm_str(responsable) or "").lower()
         index_lookup = {str(idx): idx for idx in df.index}
         for item in updates:
@@ -811,7 +811,7 @@ class RegistroService:
             group["tesis"]: group["indices"] for group in self._build_tesis_groups(ready_df, thesis_col)
         }
         updated = 0
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = formatear_fecha_segura(datetime.utcnow(), "%Y-%m-%d %H:%M:%S")
         done_value = config.PUBLICATION_DONE_VALUE
         pending_value = config.PUBLICATION_PENDING_VALUE
         for item in updates:

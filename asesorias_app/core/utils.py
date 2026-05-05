@@ -124,6 +124,34 @@ def ensure_date(value) -> Optional[date]:
     return dt.date()
 
 
+def formatear_fecha_segura(valor, formato="%Y-%m-%d"):
+    if valor is None:
+        return ""
+
+    try:
+        if pd.isna(valor):
+            return ""
+    except Exception:
+        pass
+
+    if isinstance(valor, str):
+        valor = valor.strip()
+        if valor == "" or valor.lower() in ["nat", "nan", "none"]:
+            return ""
+        return valor
+
+    if isinstance(valor, (datetime, date)):
+        return valor.strftime(formato)
+
+    try:
+        valor_convertido = pd.to_datetime(valor, errors="coerce")
+        if pd.isna(valor_convertido):
+            return ""
+        return valor_convertido.strftime(formato)
+    except Exception:
+        return ""
+
+
 def clean_text_dataframe(df: pd.DataFrame, *, strip: bool = True) -> pd.DataFrame:
     """Normaliza encabezados y celdas tipo texto en un DataFrame."""
     df = df.copy()
