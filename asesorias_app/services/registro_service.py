@@ -179,7 +179,11 @@ class RegistroService:
                 field_col = self._match_existing_column(df.columns.tolist(), [key])
                 if not field_col:
                     continue
-                df.loc[matches, field_col] = value
+                safe_value = safe_sheet_value(value)
+                if not safe_value:
+                    continue
+                df[field_col] = df[field_col].astype("object")
+                df.loc[matches, field_col] = safe_value
                 updated_any = True
             if not updated_any:
                 return 0
