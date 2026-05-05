@@ -25,6 +25,27 @@ def _write_locked(method):
     return wrapper
 
 
+def safe_sheet_value(value):
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+
+    if isinstance(value, (list, tuple, set)):
+        return " | ".join(str(v).strip() for v in value if v is not None and str(v).strip())
+
+    if isinstance(value, dict):
+        return " | ".join(f"{k}: {v}" for k, v in value.items())
+
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+
+    return str(value).strip()
+
+
 class RegistroService:
     _write_lock = threading.RLock()
 
@@ -122,7 +143,9 @@ class RegistroService:
                 raise ValueError("El registro seleccionado ya no existe. Recarga la consulta e intenta de nuevo.")
             for key, value in row_data.items():
                 if key in df.columns and self._should_update_value(value):
-                    df.at[index_to_update, key] = value
+                    safe_value = safe_sheet_value(value)
+                    if safe_value:
+                        df.at[index_to_update, key] = safe_value
             self.repo.save_registro(df)
 
     def update_field_for_tesis(self, thesis_value, field_candidates: List[str], value) -> int:
