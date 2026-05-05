@@ -281,6 +281,12 @@ def _selected_value(value: Optional[str]) -> str:
     return str(value)
 
 
+def limpiar_valor_para_guardar(valor):
+    if valor is None:
+        return ""
+    return str(valor).replace("_", " ").strip()
+
+
 def _extra_students_count() -> int:
     return int(st.session_state.get("extra_students_count", 0))
 
@@ -1088,22 +1094,22 @@ setTimeout(function(){{
             aprob_sim_value = _selected_value(aprob_sim)
             paz_y_salvo_value = _selected_value(paz_y_salvo)
             base_row_template = {
-                "Nombre_Facultad": utils.normalize_fac_name(fac_value) if fac_value else "",
-                "Nombre_Programa": prog_value,
-                "Modalidad del Programa": utils.norm_str(modalidad_programa),
+                "Nombre_Facultad": limpiar_valor_para_guardar(fac_value),
+                "Nombre_Programa": limpiar_valor_para_guardar(prog_value),
+                "Modalidad del Programa": limpiar_valor_para_guardar(modalidad_programa),
                 "Asesor metodológico": utils.norm_str(asesor_met_general),
                 "Correo_Electronico": utils.norm_str(correo),
                 "Título_Trabajo_Grado": utils.norm_str(titulo),
                 "Fecha": pd.to_datetime(fecha),
-                "Revisión Inicial": utils.norm_str(rev_inicial_value),
-                "Revisión plantilla": utils.norm_str(rev_plantilla_value),
-                "Ok_Referencistas": utils.norm_str(ok_ref_value),
-                "OK_Servicios": utils.norm_str(ok_serv_value),
+                "Revisión Inicial": limpiar_valor_para_guardar(rev_inicial_value),
+                "Revisión plantilla": limpiar_valor_para_guardar(rev_plantilla_value),
+                "Ok_Referencistas": limpiar_valor_para_guardar(ok_ref_value),
+                "OK_Servicios": limpiar_valor_para_guardar(ok_serv_value),
                 "Observaciones": utils.norm_str(obs),
-                "Escaneado Turnitin": utils.norm_str(esc_turnitin_value),
+                "Escaneado Turnitin": limpiar_valor_para_guardar(esc_turnitin_value),
                 "% similitud": int(similitud),
-                "Aprobación_Similitud": utils.norm_str(aprob_sim_value),
-                "Paz_y_Salvo": utils.norm_str(paz_y_salvo_value),
+                "Aprobación_Similitud": limpiar_valor_para_guardar(aprob_sim_value),
+                "Paz_y_Salvo": limpiar_valor_para_guardar(paz_y_salvo_value),
             }
 
             primary_doc_raw = (primary_doc_input or "").strip()
