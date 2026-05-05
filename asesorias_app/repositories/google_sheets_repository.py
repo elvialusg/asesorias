@@ -14,7 +14,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from asesorias_app import config
-from asesorias_app.core.utils import clean_text_dataframe, fix_text_encoding
+from asesorias_app.core.utils import clean_text_dataframe, fix_text_encoding, formatear_fecha_segura
 from asesorias_app.repositories.excel_repository import ExcelRepository, normalize_registro_df
 
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
@@ -179,11 +179,9 @@ class GoogleSheetsRepository(ExcelRepository):
         if value is None:
             return ""
         if isinstance(value, pd.Timestamp):
-            if pd.isna(value):
-                return ""
-            return value.strftime("%Y-%m-%d")
+            return formatear_fecha_segura(value)
         if isinstance(value, (datetime, date)):
-            return value.strftime("%Y-%m-%d")
+            return formatear_fecha_segura(value)
         if isinstance(value, float) and pd.isna(value):
             return ""
         return str(value)

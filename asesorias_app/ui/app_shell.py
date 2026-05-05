@@ -1413,7 +1413,9 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
         sort_col = "Fecha" if "Fecha" in filtered.columns else None
         if "Fecha" in filtered.columns:
             filtered["_Fecha_sort"] = pd.to_datetime(filtered["Fecha"], errors="coerce")
-            filtered["Fecha"] = filtered["_Fecha_sort"].dt.strftime("%d-%m-%Y")
+            filtered["Fecha"] = filtered["_Fecha_sort"].map(
+                lambda value: utils.formatear_fecha_segura(value, "%d-%m-%Y")
+            )
             sort_col = "_Fecha_sort"
         if not filtered.empty:
             df_to_show = filtered
