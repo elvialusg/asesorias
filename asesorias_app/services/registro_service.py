@@ -7,6 +7,7 @@ import io
 from datetime import date, datetime
 import random
 import threading
+import unicodedata
 from typing import Dict, List, Optional
 import pandas as pd
 
@@ -72,15 +73,8 @@ class RegistroService:
     @staticmethod
     def _is_observation_field(field_name) -> bool:
         text = fix_text_encoding(str(field_name), strip=True) or ""
-        normalized = (
-            text.lower()
-            .replace("ó", "o")
-            .replace("ò", "o")
-            .replace("á", "a")
-            .replace("é", "e")
-            .replace("í", "i")
-            .replace("ú", "u")
-        )
+        normalized = unicodedata.normalize("NFD", text.lower())
+        normalized = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
         return any(token in normalized for token in ("observacion", "observaciones", "nota", "comentario"))
 
     # Helpers --------------------------------------------------------------
@@ -139,10 +133,28 @@ class RegistroService:
                 raise ValueError("El estudiante no existe.")
 
             for key, value in base_row.items():
-                if key in df_current.columns and self._should_update_value(value):
+                if key not in df_current.columns:
+                    continue
+                if self._is_observation_field(key):
+                    texto_anterior = df_current.loc[idx, key]
+                    nuevo_texto = safe_sheet_value(value)
+                    row_update = {key: nuevo_texto}
+                    print("DEBUG OBSERVACION - usuario actual:", None)
+                    print("DEBUG OBSERVACION - index_to_update:", idx)
+                    print("DEBUG OBSERVACION - columna:", key)
+                    print("DEBUG OBSERVACION - texto anterior:", texto_anterior)
+                    print("DEBUG OBSERVACION - texto nuevo:", nuevo_texto)
+                    print("DEBUG OBSERVACION - row_update:", row_update)
+                    df_current[key] = df_current[key].astype("object")
+                    df_current.loc[idx, key] = nuevo_texto
+                elif self._should_update_value(value):
                     df_current.loc[idx, key] = value
 
             self.repo.save_registro(df_current)
+            for key in base_row:
+                if key in df_current.columns and self._is_observation_field(key):
+                    saved_df = self.load_registro()
+                    print("DEBUG OBSERVACION - texto guardado:", saved_df.loc[idx, key])
 
     def delete_registro(self, index_to_delete: int) -> None:
         with self._write_lock:
@@ -159,14 +171,70 @@ class RegistroService:
                 if key not in df.columns:
                     continue
                 if self._is_observation_field(key):
+                    texto_anterior = df.at[index_to_update, key]
+                    nuevo_texto = safe_sheet_value(value)
+                    row_update = {key: nuevo_texto}
+                    print("DEBUG OBSERVACION - usuario actual:", None)
+                    print("DEBUG OBSERVACION - index_to_update:", index_to_update)
+                    print("DEBUG OBSERVACION - columna:", key)
+                    print("DEBUG OBSERVACION - texto anterior:", texto_anterior)
+                    print("DEBUG OBSERVACION - texto nuevo:", nuevo_texto)
+                    print("DEBUG OBSERVACION - row_update:", row_update)
                     df[key] = df[key].astype("object")
-                    df.at[index_to_update, key] = safe_sheet_value(value)
+                    df.at[index_to_update, key] = nuevo_texto
                 elif self._should_update_value(value):
                     safe_value = safe_sheet_value(value)
                     if safe_value:
                         df[key] = df[key].astype("object")
                         df.at[index_to_update, key] = safe_value
             self.repo.save_registro(df)
+            for key in row_data:
+                if key in df.columns and self._is_observation_field(key):
+                    saved_df = self.load_registro()
+                    print("DEBUG OBSERVACION - texto guardado:", saved_df.at[index_to_update, key])
+
+    def update_observacion_colaborativa(
+        self,
+        index_to_update: int,
+        columna_observacion: str,
+        nuevo_texto,
+        user=None,
+        row_update_extra: Optional[Dict] = None,
+    ) -> None:
+        """
+        Actualiza una observacion existente sin validar autor anterior.
+        Cualquier usuario autenticado puede modificarla.
+        """
+        if not self._is_observation_field(columna_observacion):
+            raise ValueError("La columna indicada no es una columna de observacion/nota.")
+        with self._write_lock:
+            df = self.load_registro()
+            if index_to_update not in df.index:
+                raise ValueError("El registro seleccionado ya no existe. Recarga la consulta e intenta de nuevo.")
+            if columna_observacion not in df.columns:
+                raise ValueError(f"No existe la columna de observacion: {columna_observacion}")
+
+            texto_anterior = df.at[index_to_update, columna_observacion]
+            texto_nuevo = safe_sheet_value(nuevo_texto)
+            row_update = {columna_observacion: texto_nuevo}
+            for key, value in (row_update_extra or {}).items():
+                if key in df.columns:
+                    row_update[key] = safe_sheet_value(value)
+
+            print("DEBUG OBSERVACION - usuario actual:", user)
+            print("DEBUG OBSERVACION - index_to_update:", index_to_update)
+            print("DEBUG OBSERVACION - columna:", columna_observacion)
+            print("DEBUG OBSERVACION - texto anterior:", texto_anterior)
+            print("DEBUG OBSERVACION - texto nuevo:", texto_nuevo)
+            print("DEBUG OBSERVACION - row_update:", row_update)
+
+            for key, value in row_update.items():
+                df[key] = df[key].astype("object")
+                df.at[index_to_update, key] = value
+            self.repo.save_registro(df)
+
+            saved_df = self.load_registro()
+            print("DEBUG OBSERVACION - texto guardado:", saved_df.at[index_to_update, columna_observacion])
 
     def update_field_for_tesis(self, thesis_value, field_candidates: List[str], value) -> int:
         return self.update_fields_for_tesis(thesis_value, {field_candidates[0]: value})
@@ -497,6 +565,9 @@ class RegistroService:
         df = self._load_registro_for_normalizacion()
         return self._filter_by_responsable(df, responsable)
 
+    def get_registros_normalizacion_editables(self) -> pd.DataFrame:
+        return self._load_registro_for_normalizacion()
+
     def build_responsable_excel(self, responsable: str) -> bytes:
         df_resp = self.get_registros_por_responsable(responsable)
         if df_resp.empty:
@@ -550,11 +621,30 @@ class RegistroService:
             marked_ok = bool(item.get("ok"))
             target_status = config.NORMALIZATION_OK_VALUE if marked_ok else config.NORMALIZATION_PENDING_VALUE
             obs_text = norm_str(item.get("observacion")) or ""
+            status_changed = str(df.at[idx, status_col]) != target_status
+            obs_changed = str(df.at[idx, obs_col]) != obs_text
+            if not (status_changed or obs_changed):
+                continue
+            row_update = {obs_col: obs_text}
+            if status_changed:
+                row_update[status_col] = target_status
+            if marked_ok:
+                row_update[reviewer_col] = responsable
+                row_update[date_col] = timestamp
+            else:
+                row_update[reviewer_col] = ""
+                row_update[date_col] = ""
+            print("DEBUG OBSERVACION - usuario actual:", responsable)
+            print("DEBUG OBSERVACION - index_to_update:", idx)
+            print("DEBUG OBSERVACION - columna:", obs_col)
+            print("DEBUG OBSERVACION - texto anterior:", df.at[idx, obs_col])
+            print("DEBUG OBSERVACION - texto nuevo:", obs_text)
+            print("DEBUG OBSERVACION - row_update:", row_update)
             changed = False
-            if str(df.at[idx, status_col]) != target_status:
+            if status_changed:
                 df.at[idx, status_col] = target_status
                 changed = True
-            if str(df.at[idx, obs_col]) != obs_text:
+            if obs_changed:
                 df.at[idx, obs_col] = obs_text
                 changed = True
             if marked_ok:
@@ -573,6 +663,12 @@ class RegistroService:
                 updated += 1
         if updated:
             self.save_registro(df)
+            saved_df = self.load_registro()
+            for item in updates:
+                uid = norm_str(item.get("id") or item.get(id_col))
+                idx = index_lookup.get(uid or "")
+                if idx is not None and idx in saved_df.index:
+                    print("DEBUG OBSERVACION - texto guardado:", saved_df.at[idx, obs_col])
         summary_df = self._filter_by_responsable(df, responsable)
         summary = self.summarize_normalizacion(summary_df)
         summary["updated"] = updated
@@ -841,10 +937,29 @@ class RegistroService:
             group_changed = False
             for idx in group_indices:
                 changed = False
-                if str(df_all.at[idx, state_col]) != new_status:
+                status_changed = str(df_all.at[idx, state_col]) != new_status
+                obs_changed = str(df_all.at[idx, obs_col]) != obs_text
+                if not (status_changed or obs_changed):
+                    continue
+                row_update = {obs_col: obs_text}
+                if status_changed:
+                    row_update[state_col] = new_status
+                if marked:
+                    row_update[pub_by_col] = responsable
+                    row_update[date_col] = timestamp
+                else:
+                    row_update[pub_by_col] = ""
+                    row_update[date_col] = ""
+                print("DEBUG OBSERVACION - usuario actual:", responsable)
+                print("DEBUG OBSERVACION - index_to_update:", idx)
+                print("DEBUG OBSERVACION - columna:", obs_col)
+                print("DEBUG OBSERVACION - texto anterior:", df_all.at[idx, obs_col])
+                print("DEBUG OBSERVACION - texto nuevo:", obs_text)
+                print("DEBUG OBSERVACION - row_update:", row_update)
+                if status_changed:
                     df_all.at[idx, state_col] = new_status
                     changed = True
-                if str(df_all.at[idx, obs_col]) != obs_text:
+                if obs_changed:
                     df_all.at[idx, obs_col] = obs_text
                     changed = True
                 if marked:
@@ -866,6 +981,13 @@ class RegistroService:
                 updated += 1
         if updated:
             self.save_registro(df_all)
+            saved_df = self.load_registro()
+            for item in updates:
+                tesis_id = norm_str(item.get("id"))
+                group_indices = thesis_groups.get(tesis_id or "")
+                for idx in group_indices or []:
+                    if idx in saved_df.index:
+                        print("DEBUG OBSERVACION - texto guardado:", saved_df.at[idx, obs_col])
         resumen = self.build_publicacion_tesis_dataframe(responsable)
         summary = self.summarize_publicacion(resumen)
         summary["updated"] = updated
