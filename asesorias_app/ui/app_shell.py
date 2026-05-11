@@ -426,6 +426,9 @@ def _merge_form_values_over_existing(existing_row: Dict, form_row: Dict) -> Dict
     merged = dict(existing_row or {})
     for key, value in form_row.items():
         existing_is_empty = _clean_str(existing_row.get(key)) == "" if existing_row else True
+        if RegistroService._is_observation_field(key):
+            merged[key] = "" if value is None else value
+            continue
         if isinstance(value, str) and (not value.strip() or value == PLACEHOLDER_OPTION):
             continue
         if value is None:
@@ -1470,7 +1473,23 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
             with action_cols[0]:
                 if _button("Guardar cambios", key="btn_inline_save", type="primary"):
                     try:
-                        service.update_row_by_index(int(inline_idx), edited_df.iloc[0].to_dict())
+                        edited_row = edited_df.iloc[0].to_dict()
+                        original_row = (
+                            df_latest.loc[inline_idx]
+                            .drop(labels=HIDDEN_COLUMNS, errors="ignore")
+                            .to_dict()
+                        )
+                        row_update = {}
+                        for col, value in edited_row.items():
+                            old_value = original_row.get(col)
+                            if RegistroService._is_observation_field(col):
+                                if _clean_str(value) != _clean_str(old_value):
+                                    row_update[col] = "" if value is None else value
+                                continue
+                            if _clean_str(value) and _clean_str(value) != _clean_str(old_value):
+                                row_update[col] = value
+                        if row_update:
+                            service.update_row_by_index(int(inline_idx), row_update)
                     except Exception as exc:
                         print("ERROR AL GUARDAR EDICION EN CONSULTA:", repr(exc))
                         st.error("No se pudo guardar el registro. Revisa los logs.")
@@ -1576,61 +1595,68 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                 if responsable:
                     try:
                         asignados_df = service.get_registros_por_responsable(responsable)
+                        editables_df = service.get_registros_normalizacion_editables()
                     except Exception as exc:  # pragma: no cover
                         st.error(f"No se pudieron obtener los registros asignados: {exc}")
                     else:
-                        if asignados_df.empty:
+                        if asignados_df.empty and editables_df.empty:
                             st.info("No hay estudiantes asignados a esta persona.")
                         else:
-                            resumen = service.summarize_normalizacion(asignados_df)
+                            resumen = (
+                                service.summarize_normalizacion(asignados_df)
+                                if not asignados_df.empty
+                                else {"total": 0, "pending": 0, "ok": 0}
+                            )
                             metric_cols = st.columns(3)
                             metric_cols[0].metric("Total asignados", resumen["total"])
                             metric_cols[1].metric("Pendientes", resumen["pending"])
                             metric_cols[2].metric("OK", resumen["ok"])
 
-                            try:
-                                download_payload = service.build_responsable_excel(responsable)
-                            except Exception as exc:  # pragma: no cover
-                                st.error(f"No se pudo generar el archivo de descarga: {exc}")
-                            else:
-                                safe_name = responsable.lower().replace(" ", "_")
-                                st.download_button(
-                                    _download_label_for_responsable(responsable, context="normalizacion"),
-                                    data=download_payload,
-                                    file_name=f"normalizacion_{safe_name}.xlsx",
-                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                )
+                            if not asignados_df.empty:
+                                try:
+                                    download_payload = service.build_responsable_excel(responsable)
+                                except Exception as exc:  # pragma: no cover
+                                    st.error(f"No se pudo generar el archivo de descarga: {exc}")
+                                else:
+                                    safe_name = responsable.lower().replace(" ", "_")
+                                    st.download_button(
+                                        _download_label_for_responsable(responsable, context="normalizacion"),
+                                        data=download_payload,
+                                        file_name=f"normalizacion_{safe_name}.xlsx",
+                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    )
 
                             status_col = config.NORMALIZATION_STATUS_COLUMN
                             obs_col = config.NORMALIZATION_OBS_COLUMN
+                            editor_df = editables_df
                             ced_col = None
                             for candidate in ("C\u01f8dula", "C\u00e9dula", "C?dula", "Cedula"):
-                                if candidate in asignados_df.columns:
+                                if candidate in editor_df.columns:
                                     ced_col = candidate
                                     break
                             ced_values = (
-                                asignados_df[ced_col].astype(str)
+                                editor_df[ced_col].astype(str)
                                 if ced_col
-                                else [""] * len(asignados_df)
+                                else [""] * len(editor_df)
                             )
                             ok_value = (config.NORMALIZATION_OK_VALUE or "OK").upper()
-                            programa_col = "Nombre_Programa" if "Nombre_Programa" in asignados_df.columns else None
-                            thesis_source_col = RegistroService._tesis_column(asignados_df)
+                            programa_col = "Nombre_Programa" if "Nombre_Programa" in editor_df.columns else None
+                            thesis_source_col = RegistroService._tesis_column(editor_df)
                             thesis_col = thesis_source_col or getattr(config, "THESIS_PRIMARY_COLUMN", "Título_Trabajo_Grado")
-                            row_ids = asignados_df.index.astype(str)
+                            row_ids = editor_df.index.astype(str)
                             edit_source = pd.DataFrame(
                                 {
                                     "ID": row_ids,
-                                    "Nombre": asignados_df.get("Nombre_Usuario", ""),
+                                    "Nombre": editor_df.get("Nombre_Usuario", ""),
                                     "Cedula": ced_values,
-                                    "Programa": asignados_df.get(programa_col, "") if programa_col else "",
-                                    "Tesis": asignados_df.get(thesis_col, "") if thesis_col in asignados_df.columns else "",
-                                    "Revisado": asignados_df[status_col]
+                                    "Programa": editor_df.get(programa_col, "") if programa_col else "",
+                                    "Tesis": editor_df.get(thesis_col, "") if thesis_col in editor_df.columns else "",
+                                    "Revisado": editor_df[status_col]
                                     .fillna("")
                                     .astype(str)
                                     .str.upper()
                                     .eq(ok_value),
-                                    "Observacion": asignados_df[obs_col].fillna("").astype(str),
+                                    "Observacion": editor_df[obs_col].fillna("").astype(str),
                                 }
                             )
                             edit_source = edit_source.set_index("ID")
@@ -1711,8 +1737,8 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
                 key="publicacion_show_all",
             )
         df_responsable = service.build_publicacion_tesis_dataframe(
-            None if show_all else responsable,
-            include_all_for_primary=show_all,
+            None,
+            include_all_for_primary=True,
         )
         if df_responsable.empty:
             st.info("No hay registros listos para publicación con este filtro.")
@@ -1870,8 +1896,8 @@ def _tab_publicacion_v2(tab, service: RegistroService, meta: dict) -> None:
             )
 
         df_responsable = service.build_publicacion_tesis_dataframe(
-            None if show_all else responsable,
-            include_all_for_primary=show_all,
+            None,
+            include_all_for_primary=True,
         )
         if df_responsable.empty:
             st.info("No hay registros listos para publicaciÃ³n con este filtro.")
@@ -2033,8 +2059,8 @@ def _tab_publicacion_v3(tab, service: RegistroService, meta: dict) -> None:
             )
 
         df_responsable = service.build_publicacion_tesis_dataframe(
-            None if show_all else responsable,
-            include_all_for_primary=show_all,
+            None,
+            include_all_for_primary=True,
         )
         if df_responsable.empty:
             st.info("No hay registros listos para publicación con este filtro.")
