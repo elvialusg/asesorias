@@ -1640,7 +1640,7 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                                 "Programa": st.column_config.TextColumn("Programa académico", disabled=True),
                                 "Tesis": st.column_config.TextColumn("Trabajo de grado / tesis", disabled=True),
                                 "Revisado": st.column_config.CheckboxColumn("Estado OK"),
-                                "Observacion": st.column_config.TextColumn("Observación de normalización"),
+                                "Observacion": st.column_config.TextColumn("Observación de normalización", disabled=False),
                             }
                             edited_df = st.data_editor(
                                 edit_source,
@@ -1757,7 +1757,7 @@ def _tab_publicacion(tab, service: RegistroService, meta: dict) -> None:
             "Cedula": st.column_config.TextColumn("Cédula", disabled=True),
             "Asignado": st.column_config.TextColumn("Asignado a", disabled=True),
             "Publicado": st.column_config.CheckboxColumn("Publicado"),
-            "Observacion": st.column_config.TextColumn("Observación publicación"),
+            "Observacion": st.column_config.TextColumn("Observación publicación", disabled=False),
         }
         edited_df = st.data_editor(
             edit_source,
@@ -1913,7 +1913,7 @@ def _tab_publicacion_v2(tab, service: RegistroService, meta: dict) -> None:
             "Estudiantes": st.column_config.NumberColumn("Estudiantes", disabled=True, min_value=1, step=1),
             "Asignado": st.column_config.TextColumn("Asignado a", disabled=True),
             "Publicado": st.column_config.CheckboxColumn("Publicado"),
-            "Observacion": st.column_config.TextColumn("ObservaciÃ³n publicaciÃ³n"),
+            "Observacion": st.column_config.TextColumn("ObservaciÃ³n publicaciÃ³n", disabled=False),
         }
         edited_df = st.data_editor(
             edit_source,
@@ -2076,7 +2076,7 @@ def _tab_publicacion_v3(tab, service: RegistroService, meta: dict) -> None:
             "Estudiantes": st.column_config.NumberColumn("Estudiantes", disabled=True, min_value=1, step=1),
             "Asignado": st.column_config.TextColumn("Asignado a", disabled=True),
             "Publicado": st.column_config.CheckboxColumn("Publicado"),
-            "Observacion": st.column_config.TextColumn("Observación publicación"),
+            "Observacion": st.column_config.TextColumn("Observación publicación", disabled=False),
         }
         edited_df = st.data_editor(
             edit_source,

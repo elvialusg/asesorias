@@ -69,6 +69,20 @@ class RegistroService:
             return not pd.isna(value)
         return True
 
+    @staticmethod
+    def _is_observation_field(field_name) -> bool:
+        text = fix_text_encoding(str(field_name), strip=True) or ""
+        normalized = (
+            text.lower()
+            .replace("ó", "o")
+            .replace("ò", "o")
+            .replace("á", "a")
+            .replace("é", "e")
+            .replace("í", "i")
+            .replace("ú", "u")
+        )
+        return any(token in normalized for token in ("observacion", "observaciones", "nota", "comentario"))
+
     # Helpers --------------------------------------------------------------
     def load_lists(self):
         data = self.repo.load_lists()
@@ -142,7 +156,12 @@ class RegistroService:
             if index_to_update not in df.index:
                 raise ValueError("El registro seleccionado ya no existe. Recarga la consulta e intenta de nuevo.")
             for key, value in row_data.items():
-                if key in df.columns and self._should_update_value(value):
+                if key not in df.columns:
+                    continue
+                if self._is_observation_field(key):
+                    df[key] = df[key].astype("object")
+                    df.at[index_to_update, key] = safe_sheet_value(value)
+                elif self._should_update_value(value):
                     safe_value = safe_sheet_value(value)
                     if safe_value:
                         df[key] = df[key].astype("object")
@@ -159,7 +178,7 @@ class RegistroService:
         cleaned_values = {
             key: value
             for key, value in (field_values or {}).items()
-            if self._should_update_value(value)
+            if self._is_observation_field(key) or self._should_update_value(value)
         }
         if not cleaned_values:
             return 0
@@ -514,14 +533,12 @@ class RegistroService:
     def update_normalizacion_estado(self, responsable: str, updates: List[Dict]) -> Dict:
         df = self._load_registro_for_normalizacion()
         id_col = config.REGISTRO_ID_COLUMN
-        assignment_col = config.ASSIGNMENT_COLUMN
         status_col = config.NORMALIZATION_STATUS_COLUMN
         reviewer_col = config.NORMALIZATION_REVIEWER_COLUMN
         date_col = config.NORMALIZATION_DATE_COLUMN
         obs_col = config.NORMALIZATION_OBS_COLUMN
         updated = 0
         timestamp = formatear_fecha_segura(datetime.utcnow(), "%Y-%m-%d %H:%M:%S")
-        target_name = (norm_str(responsable) or "").lower()
         index_lookup = {str(idx): idx for idx in df.index}
         for item in updates:
             uid = norm_str(item.get("id") or item.get(id_col))
@@ -529,9 +546,6 @@ class RegistroService:
                 continue
             idx = index_lookup.get(uid)
             if idx is None:
-                continue
-            assigned = (norm_str(df.at[idx, assignment_col]) or "").lower()
-            if assigned != target_name:
                 continue
             marked_ok = bool(item.get("ok"))
             target_status = config.NORMALIZATION_OK_VALUE if marked_ok else config.NORMALIZATION_PENDING_VALUE
@@ -720,7 +734,6 @@ class RegistroService:
         if target_clean not in allowed:
             raise ValueError("Responsable de publicacion no valido.")
         df_all, ready_df = self._load_registro_for_publicacion()
-        assignment_col = config.PUBLICATION_ASSIGNMENT_COLUMN
         state_col = config.PUBLICATION_STATUS_COLUMN
         pub_by_col = config.PUBLICATION_PUBLISHED_BY_COLUMN
         date_col = config.PUBLICATION_DATE_COLUMN
@@ -810,7 +823,6 @@ class RegistroService:
         thesis_col = self._tesis_column(ready_df)
         if not thesis_col:
             raise RuntimeError("No se encontro la columna de titulo de tesis para publicacion.")
-        target_norm = (norm_str(responsable) or "").lower()
         thesis_groups = {
             group["tesis"]: group["indices"] for group in self._build_tesis_groups(ready_df, thesis_col)
         }
@@ -822,10 +834,6 @@ class RegistroService:
             tesis_id = norm_str(item.get("id"))
             group_indices = thesis_groups.get(tesis_id or "")
             if not group_indices:
-                continue
-            first_idx = group_indices[0]
-            assigned = (norm_str(df_all.at[first_idx, assignment_col]) or "").lower()
-            if assigned != target_norm:
                 continue
             marked = bool(item.get("ok"))
             obs_text = norm_str(item.get("observacion")) or ""
