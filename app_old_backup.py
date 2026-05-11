@@ -90,7 +90,6 @@ def append_pipe(existing, item) -> str:
         parts.append(item)
     return " | ".join(parts)
 
-@st.cache_data(show_spinner=False)
 def load_lists(template_path: str) -> dict:
     wb = openpyxl.load_workbook(template_path, data_only=True, keep_vba=True)
     ws = wb[SHEET_LISTAS]

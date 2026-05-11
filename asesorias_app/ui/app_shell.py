@@ -41,6 +41,73 @@ BUTTON_STYLE_STATE_KEY = "_button_styles_applied"
 ADD_BUTTON_STYLE_STATE_KEY = "_add_student_button_style"
 
 
+def _install_streamlit_cache_modal_guard() -> None:
+    components.html(
+        """
+<script>
+(function () {
+    const parentWindow = window.parent;
+    const parentDocument = parentWindow.document;
+
+    if (parentWindow.__controlTesisClearCacheGuardInstalled) {
+        return;
+    }
+    parentWindow.__controlTesisClearCacheGuardInstalled = true;
+
+    function isEditableTarget(target) {
+        if (!target) {
+            return false;
+        }
+        const tag = (target.tagName || "").toLowerCase();
+        return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+    }
+
+    parentWindow.addEventListener(
+        "keydown",
+        function (event) {
+            const key = (event.key || "").toLowerCase();
+            if (key === "c" && !event.ctrlKey && !event.metaKey && !event.altKey && !isEditableTarget(event.target)) {
+                event.stopImmediatePropagation();
+                event.preventDefault();
+            }
+        },
+        true
+    );
+
+    function closeStreamlitCacheDialog() {
+        const title = "Clear " + "caches";
+        const bodyMarker = "function " + "caches";
+        const dialogs = Array.from(parentDocument.querySelectorAll('[role="dialog"]'));
+        for (const dialog of dialogs) {
+            const text = dialog.innerText || "";
+            if (!text.includes(title) || !text.includes(bodyMarker)) {
+                continue;
+            }
+            const buttons = Array.from(dialog.querySelectorAll("button"));
+            const closeButton =
+                dialog.querySelector('button[aria-label="Close"], button[aria-label="close"]') ||
+                buttons.find((button) => ["Cancel", "×", "x"].includes((button.innerText || "").trim()));
+            if (closeButton) {
+                closeButton.click();
+            } else {
+                dialog.remove();
+            }
+        }
+    }
+
+    closeStreamlitCacheDialog();
+    new MutationObserver(closeStreamlitCacheDialog).observe(parentDocument.body, {
+        childList: true,
+        subtree: true
+    });
+})();
+</script>
+""",
+        height=0,
+        width=0,
+    )
+
+
 def _style_dashboard_chart(chart):
     return (
         chart
@@ -279,6 +346,12 @@ def _selected_value(value: Optional[str]) -> str:
     if value in (None, "", PLACEHOLDER_OPTION):
         return ""
     return str(value)
+
+
+def limpiar_valor_para_guardar(valor):
+    if valor is None:
+        return ""
+    return str(valor).replace("_", " ").strip()
 
 
 def _extra_students_count() -> int:
@@ -1088,22 +1161,22 @@ setTimeout(function(){{
             aprob_sim_value = _selected_value(aprob_sim)
             paz_y_salvo_value = _selected_value(paz_y_salvo)
             base_row_template = {
-                "Nombre_Facultad": utils.normalize_fac_name(fac_value) if fac_value else "",
-                "Nombre_Programa": prog_value,
-                "Modalidad del Programa": utils.norm_str(modalidad_programa),
+                "Nombre_Facultad": limpiar_valor_para_guardar(fac_value),
+                "Nombre_Programa": limpiar_valor_para_guardar(prog_value),
+                "Modalidad del Programa": limpiar_valor_para_guardar(modalidad_programa),
                 "Asesor metodológico": utils.norm_str(asesor_met_general),
                 "Correo_Electronico": utils.norm_str(correo),
                 "Título_Trabajo_Grado": utils.norm_str(titulo),
                 "Fecha": pd.to_datetime(fecha),
-                "Revisión Inicial": utils.norm_str(rev_inicial_value),
-                "Revisión plantilla": utils.norm_str(rev_plantilla_value),
-                "Ok_Referencistas": utils.norm_str(ok_ref_value),
-                "OK_Servicios": utils.norm_str(ok_serv_value),
+                "Revisión Inicial": limpiar_valor_para_guardar(rev_inicial_value),
+                "Revisión plantilla": limpiar_valor_para_guardar(rev_plantilla_value),
+                "Ok_Referencistas": limpiar_valor_para_guardar(ok_ref_value),
+                "OK_Servicios": limpiar_valor_para_guardar(ok_serv_value),
                 "Observaciones": utils.norm_str(obs),
-                "Escaneado Turnitin": utils.norm_str(esc_turnitin_value),
+                "Escaneado Turnitin": limpiar_valor_para_guardar(esc_turnitin_value),
                 "% similitud": int(similitud),
-                "Aprobación_Similitud": utils.norm_str(aprob_sim_value),
-                "Paz_y_Salvo": utils.norm_str(paz_y_salvo_value),
+                "Aprobación_Similitud": limpiar_valor_para_guardar(aprob_sim_value),
+                "Paz_y_Salvo": limpiar_valor_para_guardar(paz_y_salvo_value),
             }
 
             primary_doc_raw = (primary_doc_input or "").strip()
@@ -1229,10 +1302,12 @@ setTimeout(function(){{
                                         try:
                                             service.add_registro(new_student_row, asesorias_payload)
                                             successes += 1
-                                        except ValueError as exc:
+                                        except Exception as exc:
+                                            print("ERROR AL AGREGAR ESTUDIANTE ADICIONAL:", repr(exc))
                                             errors.append(f"{name_val or doc_val}: {exc}")
-                                except ValueError as exc:
-                                    errors.append(str(exc))
+                                except Exception as exc:
+                                    print("ERROR AL GUARDAR REGISTRO:", repr(exc))
+                                    errors.append("No se pudo guardar el registro. Revisa los logs.")
                             else:
                                 for _, doc_val, name_val, email_val in students_to_save:
                                     if not doc_val and not name_val:
@@ -1244,7 +1319,8 @@ setTimeout(function(){{
                                     try:
                                         service.add_registro(row, asesorias_payload)
                                         successes += 1
-                                    except ValueError as exc:
+                                    except Exception as exc:
+                                        print("ERROR AL GUARDAR REGISTRO NUEVO:", repr(exc))
                                         errors.append(f"{name_val or doc_val}: {exc}")
                         st.session_state["saving"] = False
                         if successes:
@@ -1393,12 +1469,17 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
             action_cols = st.columns([0.25, 0.25, 0.5])
             with action_cols[0]:
                 if _button("Guardar cambios", key="btn_inline_save", type="primary"):
-                    service.update_row_by_index(int(inline_idx), edited_df.iloc[0].to_dict())
-                    st.success("Registro actualizado correctamente.")
-                    st.session_state.pop("inline_edit_idx", None)
-                    st.session_state.pop("inline_edit_data", None)
-                    st.session_state["reset_pending"] = True
-                    _streamlit_rerun()
+                    try:
+                        service.update_row_by_index(int(inline_idx), edited_df.iloc[0].to_dict())
+                    except Exception as exc:
+                        print("ERROR AL GUARDAR EDICION EN CONSULTA:", repr(exc))
+                        st.error("No se pudo guardar el registro. Revisa los logs.")
+                    else:
+                        st.success("Registro actualizado correctamente.")
+                        st.session_state.pop("inline_edit_idx", None)
+                        st.session_state.pop("inline_edit_data", None)
+                        st.session_state["reset_pending"] = True
+                        _streamlit_rerun()
             with action_cols[1]:
                 if _button("Cancelar edición", key="btn_inline_cancel", type="secondary"):
                     st.session_state.pop("inline_edit_idx", None)
@@ -1407,7 +1488,9 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
         sort_col = "Fecha" if "Fecha" in filtered.columns else None
         if "Fecha" in filtered.columns:
             filtered["_Fecha_sort"] = pd.to_datetime(filtered["Fecha"], errors="coerce")
-            filtered["Fecha"] = filtered["_Fecha_sort"].dt.strftime("%d-%m-%Y")
+            filtered["Fecha"] = filtered["_Fecha_sort"].map(
+                lambda value: utils.formatear_fecha_segura(value, "%d-%m-%Y")
+            )
             sort_col = "_Fecha_sort"
         if not filtered.empty:
             df_to_show = filtered
@@ -2219,6 +2302,7 @@ def _tab_dashboard(tab, service: RegistroService, meta: dict) -> None:
 
 def render_app() -> None:
     load_theme()
+    _install_streamlit_cache_modal_guard()
     user = login_ui.get_current_user()
     if not user:
         login_ui.render_login_page()

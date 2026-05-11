@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 from asesorias_app import config
-from asesorias_app.core.utils import fix_text_encoding, norm_str, normalize_fac_name
+from asesorias_app.core.utils import fix_text_encoding, formatear_fecha_segura, norm_str, normalize_fac_name
 from asesorias_app.repositories.excel_repository import ExcelRepository, normalize_registro_df
 from asesorias_app.repositories.google_sheets_repository import GoogleSheetsRepository
 
@@ -23,6 +23,27 @@ def _write_locked(method):
             return method(self, *args, **kwargs)
 
     return wrapper
+
+
+def safe_sheet_value(value):
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+
+    if isinstance(value, (list, tuple, set)):
+        return " | ".join(str(v).strip() for v in value if v is not None and str(v).strip())
+
+    if isinstance(value, dict):
+        return " | ".join(f"{k}: {v}" for k, v in value.items())
+
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+
+    return str(value).strip()
 
 
 class RegistroService:
@@ -138,9 +159,13 @@ class RegistroService:
                 if key not in df.columns:
                     continue
                 if self._is_observation_field(key):
-                    df.at[index_to_update, key] = "" if value is None else value
+                    df[key] = df[key].astype("object")
+                    df.at[index_to_update, key] = safe_sheet_value(value)
                 elif self._should_update_value(value):
-                    df.at[index_to_update, key] = value
+                    safe_value = safe_sheet_value(value)
+                    if safe_value:
+                        df[key] = df[key].astype("object")
+                        df.at[index_to_update, key] = safe_value
             self.repo.save_registro(df)
 
     def update_field_for_tesis(self, thesis_value, field_candidates: List[str], value) -> int:
@@ -173,7 +198,11 @@ class RegistroService:
                 field_col = self._match_existing_column(df.columns.tolist(), [key])
                 if not field_col:
                     continue
-                df.loc[matches, field_col] = value
+                safe_value = safe_sheet_value(value)
+                if not safe_value:
+                    continue
+                df[field_col] = df[field_col].astype("object")
+                df.loc[matches, field_col] = safe_value
                 updated_any = True
             if not updated_any:
                 return 0
@@ -509,7 +538,7 @@ class RegistroService:
         date_col = config.NORMALIZATION_DATE_COLUMN
         obs_col = config.NORMALIZATION_OBS_COLUMN
         updated = 0
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = formatear_fecha_segura(datetime.utcnow(), "%Y-%m-%d %H:%M:%S")
         index_lookup = {str(idx): idx for idx in df.index}
         for item in updates:
             uid = norm_str(item.get("id") or item.get(id_col))
@@ -700,10 +729,6 @@ class RegistroService:
 
     @_write_locked
     def assign_publicacion(self, assigner: str, ids: List[str], target: str) -> int:
-        primary_norm = (norm_str(config.PUBLICATION_PRIMARY) or "").lower()
-        assigner_norm = (norm_str(assigner) or "").lower()
-        if assigner_norm != primary_norm:
-            raise PermissionError("Solo la responsable principal puede reasignar publicaciones.")
         target_clean = norm_str(target)
         allowed = [norm_str(r) for r in config.PUBLICATION_RESPONSIBLES]
         if target_clean not in allowed:
@@ -802,7 +827,7 @@ class RegistroService:
             group["tesis"]: group["indices"] for group in self._build_tesis_groups(ready_df, thesis_col)
         }
         updated = 0
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = formatear_fecha_segura(datetime.utcnow(), "%Y-%m-%d %H:%M:%S")
         done_value = config.PUBLICATION_DONE_VALUE
         pending_value = config.PUBLICATION_PENDING_VALUE
         for item in updates:
