@@ -882,7 +882,7 @@ def _render_tabs(service: RegistroService, meta: dict, user: AuthUser) -> None:
 
     menu_col, content_col = st.columns([0.24, 0.76])
     raw_menu = [
-        {"key": "register", "label": "Registrar tesis", "feature": "register"},
+        {"key": "register", "label": "Registrar tesis / Editar tesis", "feature": "register"},
         {"key": "consult", "label": "Consultar registros", "feature": "consult"},
         {"key": "normalizacion", "label": "Normalización", "feature": "normalizacion"},
         {"key": "publicacion", "label": "Publicación", "feature": "publicacion"},
@@ -1213,19 +1213,9 @@ setTimeout(function(){{
                 saving = st.session_state.get("saving", False)
                 if saving:
                     st.info("Guardando registro...")
-                action_cols = st.columns([0.24, 0.24, 0.52])
+                action_cols = st.columns([0.24, 0.76])
                 with action_cols[0]:
                     save_clicked = _button("Guardar registro", type="primary", disabled=saving)
-                with action_cols[1]:
-                    modify_clicked = _button(
-                        "Modificar registro",
-                        key="btn_register_load_edit",
-                        type="secondary",
-                        disabled=saving,
-                    )
-                if modify_clicked:
-                    _load_existing_registro_for_edit(service, meta, lists)
-                    _streamlit_rerun()
                 if save_clicked:
                     first_doc = (primary_doc_raw or "").strip()
                     first_name = (primary_name_raw or "").strip()
