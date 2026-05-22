@@ -28,7 +28,7 @@ STATUS_OPTIONS = ["SI", "NO", "EN PROCESO"]
 STATUS_OPTIONS_WITH_PLACEHOLDER = [PLACEHOLDER_OPTION] + STATUS_OPTIONS
 STATUS_LABELS = {"SI": "Si", "NO": "No", "EN PROCESO": "En proceso"}
 STATUS_LABELS_WITH_PLACEHOLDER = {PLACEHOLDER_OPTION: PLACEHOLDER_OPTION, **STATUS_LABELS}
-PAZ_OPTIONS = ["EN PROCESO", "SI", "NO"]
+PAZ_OPTIONS = ["SI", "NO"]
 PAZ_OPTIONS_WITH_PLACEHOLDER = [PLACEHOLDER_OPTION] + PAZ_OPTIONS
 PAZ_LABELS = {"EN PROCESO": "En proceso", "SI": "Sí", "NO": "No"}
 PAZ_LABELS_WITH_PLACEHOLDER = {PLACEHOLDER_OPTION: PLACEHOLDER_OPTION, **PAZ_LABELS}
@@ -1148,7 +1148,7 @@ setTimeout(function(){{
             obs = st.text_area("Observaciones", height=120, key="obs")
             st.session_state.setdefault("paz_y_salvo", PLACEHOLDER_OPTION)
             paz_y_salvo = _select_with_display(
-                "Estudiante apto para paz y salvo",
+                "Paz y Salvo",
                 PAZ_OPTIONS_WITH_PLACEHOLDER,
                 PAZ_LABELS_WITH_PLACEHOLDER,
                 key="paz_y_salvo",
