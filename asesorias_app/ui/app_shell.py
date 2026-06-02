@@ -24,9 +24,9 @@ from asesorias_app.ui import login as login_ui
 from asesorias_app.ui.theme import load_theme
 
 PLACEHOLDER_OPTION = "Seleccionar"
-STATUS_OPTIONS = ["SI", "NO", "EN PROCESO"]
+STATUS_OPTIONS = ["SI", "NO"]
 STATUS_OPTIONS_WITH_PLACEHOLDER = [PLACEHOLDER_OPTION] + STATUS_OPTIONS
-STATUS_LABELS = {"SI": "Si", "NO": "No", "EN PROCESO": "En proceso"}
+STATUS_LABELS = {"SI": "Sí", "NO": "No", "EN PROCESO": "En proceso"}
 STATUS_LABELS_WITH_PLACEHOLDER = {PLACEHOLDER_OPTION: PLACEHOLDER_OPTION, **STATUS_LABELS}
 PAZ_OPTIONS = ["SI", "NO"]
 PAZ_OPTIONS_WITH_PLACEHOLDER = [PLACEHOLDER_OPTION] + PAZ_OPTIONS
@@ -342,6 +342,10 @@ def _format_list_label(option) -> str:
     return " ".join(cleaned.split()) if cleaned else ""
 
 
+def _remove_en_proceso_option(options: List[str]) -> List[str]:
+    return [option for option in options if _normalize_lookup_text(option) != "en proceso"]
+
+
 def _selected_value(value: Optional[str]) -> str:
     if value in (None, "", PLACEHOLDER_OPTION):
         return ""
@@ -647,12 +651,14 @@ def _prefill_form_from_registro(row, row_index: int, meta: dict, lists: dict) ->
     _set_select_if_valid("ok_serv", _row_get(registro, ["OK_Servicios", "OK Servicios"]), STATUS_OPTIONS_WITH_PLACEHOLDER)
 
     rev_inicial_opts = [PLACEHOLDER_OPTION] + list(lists.get("Revisión Inicial") or [])
+    rev_inicial_opts = _remove_en_proceso_option(rev_inicial_opts)
     _set_select_if_valid("rev_inicial", _row_get(registro, ["Revisión Inicial", "Revision Inicial"]), rev_inicial_opts)
     rev_pl_opts = [PLACEHOLDER_OPTION] + list(lists.get("Revisión de Plantilla") or lists.get("Revisión plantilla") or [])
+    rev_pl_opts = _remove_en_proceso_option(rev_pl_opts)
     _set_select_if_valid("rev_plantilla", _row_get(registro, ["Revisión plantilla", "Revisión de Plantilla", "Revision plantilla"]), rev_pl_opts)
-    esc_turnitin_opts = [PLACEHOLDER_OPTION] + list(lists.get("Escaneado Turnitin") or [])
+    esc_turnitin_opts = [PLACEHOLDER_OPTION] + _remove_en_proceso_option(list(lists.get("Escaneado Turnitin") or []))
     _set_select_if_valid("esc_turnitin", _row_get(registro, ["Escaneado Turnitin"]), esc_turnitin_opts)
-    aprob_sim_opts = [PLACEHOLDER_OPTION] + list(lists.get("Aprobados PyS") or [])
+    aprob_sim_opts = [PLACEHOLDER_OPTION] + _remove_en_proceso_option(list(lists.get("Aprobados PyS") or []))
     _set_select_if_valid("aprob_sim", _row_get(registro, ["Aprobación_Similitud", "Aprobacion_Similitud"]), aprob_sim_opts)
 
     try:
@@ -1101,6 +1107,7 @@ setTimeout(function(){{
             c3, c4 = st.columns(2)
             with c3:
                 rev_inicial_opts = [PLACEHOLDER_OPTION] + list(lists.get("Revisión Inicial") or [])
+                rev_inicial_opts = _remove_en_proceso_option(rev_inicial_opts)
                 rev_inicial = st.selectbox(
                     "Revisión inicial",
                     rev_inicial_opts,
@@ -1108,13 +1115,14 @@ setTimeout(function(){{
                     key="rev_inicial",
                 )
                 rev_pl_opts = list(lists.get("Revisión de Plantilla") or lists.get("Revisión plantilla") or [])
+                rev_pl_opts = _remove_en_proceso_option(rev_pl_opts)
                 rev_plantilla = st.selectbox(
                     "Revisión plantilla",
                     [PLACEHOLDER_OPTION] + rev_pl_opts,
                     format_func=_format_list_label,
                     key="rev_plantilla",
                 )
-                esc_turnitin_opts = [PLACEHOLDER_OPTION] + list(lists.get("Escaneado Turnitin") or [])
+                esc_turnitin_opts = [PLACEHOLDER_OPTION] + _remove_en_proceso_option(list(lists.get("Escaneado Turnitin") or []))
                 esc_turnitin = st.selectbox(
                     "Escaneado Turnitin",
                     esc_turnitin_opts,
@@ -1138,7 +1146,7 @@ setTimeout(function(){{
                 )
                 similitud = st.number_input("% similitud", min_value=0, max_value=100, step=1, key="similitud")
 
-            aprob_sim_opts = [PLACEHOLDER_OPTION] + list(lists.get("Aprobados PyS") or [])
+            aprob_sim_opts = [PLACEHOLDER_OPTION] + _remove_en_proceso_option(list(lists.get("Aprobados PyS") or []))
             aprob_sim = st.selectbox(
                 "Aprobación similitud",
                 aprob_sim_opts,
