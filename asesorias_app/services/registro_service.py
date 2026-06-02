@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 from asesorias_app import config
-from asesorias_app.core.utils import fix_text_encoding, formatear_fecha_segura, norm_str, normalize_fac_name
+from asesorias_app.core.utils import fix_text_encoding, formatear_fecha_segura, hoy_colombia, norm_str, normalize_fac_name
 from asesorias_app.repositories.excel_repository import ExcelRepository, normalize_registro_df
 from asesorias_app.repositories.google_sheets_repository import GoogleSheetsRepository
 
@@ -295,7 +295,7 @@ class RegistroService:
                 base_row["Paz_y_Salvo"] = norm_str(row.get("Paz_y_Salvo")) or "EN PROCESO"
                 fecha_val = pd.to_datetime(row.get("Fecha"), errors="coerce")
                 if pd.isna(fecha_val):
-                    fecha_val = pd.Timestamp(date.today())
+                    fecha_val = pd.Timestamp(hoy_colombia())
                 base_row["Fecha"] = fecha_val
 
                 idx = self.find_student_index(df, ced, nom)

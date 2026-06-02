@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-from datetime import date, datetime
+from datetime import datetime
 from typing import Dict, List, Optional
 import io
 import unicodedata
@@ -556,7 +556,7 @@ def _reset_form(meta: dict) -> None:
     st.session_state["correo"] = ""
     st.session_state["asesor_met_general"] = ""
     st.session_state["titulo"] = ""
-    st.session_state["fecha"] = date.today()
+    st.session_state["fecha"] = utils.hoy_colombia()
     st.session_state["obs"] = ""
     st.session_state["similitud"] = 0
     st.session_state["paz_y_salvo"] = PLACEHOLDER_OPTION
@@ -662,9 +662,9 @@ def _prefill_form_from_registro(row, row_index: int, meta: dict, lists: dict) ->
 
     try:
         fecha_dt = pd.to_datetime(_row_get(registro, ["Fecha"]), errors="coerce")
-        st.session_state["fecha"] = fecha_dt.date() if not pd.isna(fecha_dt) else date.today()
+        st.session_state["fecha"] = fecha_dt.date() if not pd.isna(fecha_dt) else utils.hoy_colombia()
     except Exception:
-        st.session_state["fecha"] = date.today()
+        st.session_state["fecha"] = utils.hoy_colombia()
 
     fac_norm = _clean_str(_row_get(registro, ["Nombre_Facultad", "Facultad"]))
     fac_display = meta["fac_norm_map"].get(fac_norm)
