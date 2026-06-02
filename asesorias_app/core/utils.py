@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from typing import Any, Iterable, List, Optional
 import unicodedata
 
@@ -14,6 +15,19 @@ except Exception:  # pragma: no cover - ftfy es opcional en el runtime
     _ftfy_fix_text = None
 
 _MOJIBAKE_FALLBACK_CODECS = (("latin-1", "utf-8"), ("cp1252", "utf-8"))
+BOGOTA_TZ = ZoneInfo("America/Bogota")
+
+
+def hoy_colombia():
+    return datetime.now(BOGOTA_TZ).date()
+
+
+def ahora_colombia():
+    return datetime.now(BOGOTA_TZ)
+
+
+def fecha_colombia_str(formato="%Y-%m-%d"):
+    return ahora_colombia().strftime(formato)
 
 
 def _basic_mojibake_fix(text: str) -> str:
