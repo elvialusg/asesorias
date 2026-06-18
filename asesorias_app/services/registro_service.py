@@ -356,13 +356,29 @@ class RegistroService:
         if not thesis_groups:
             raise ValueError("No hay tesis para distribuir.")
 
-        rng = random.Random(seed)
-        rng.shuffle(thesis_groups)
         counts = {resp: {"tesis": 0, "estudiantes": 0} for resp in responsables_clean}
+        reassigned_groups = []
+        pending_groups = []
+        for group in thesis_groups:
+            responsible = self._preferred_assignment_for_group(df, group, responsables_clean)
+            if responsible:
+                df.loc[group["indices"], assignment_col] = responsible
+                reassigned_groups.append(group)
+            else:
+                pending_groups.append(group)
+
+        rng = random.Random(seed)
+        rng.shuffle(pending_groups)
         reps = len(responsables_clean)
-        for idx, group in enumerate(thesis_groups):
+        for idx, group in enumerate(pending_groups):
             responsible = responsables_clean[idx % reps]
             df.loc[group["indices"], assignment_col] = responsible
+            reassigned_groups.append(group)
+
+        for group in reassigned_groups:
+            responsible = norm_str(df.at[group["indices"][0], assignment_col]) or ""
+            if responsible not in counts:
+                counts[responsible] = {"tesis": 0, "estudiantes": 0}
             counts[responsible]["tesis"] += 1
             counts[responsible]["estudiantes"] += group["students"]
 
@@ -380,6 +396,48 @@ class RegistroService:
             "total_students": total_students,
             "thesis_without_title": thesis_without_title,
         }
+
+    @staticmethod
+    def _most_common_assignment(assignments: List[str], responsables: List[str]) -> str:
+        responsables_lookup = {(norm_str(resp) or "").lower(): resp for resp in responsables}
+        counts: Dict[str, int] = {}
+        first_seen: Dict[str, int] = {}
+        for idx, value in enumerate(assignments):
+            clean = norm_str(value)
+            if not clean:
+                continue
+            key = clean.lower()
+            counts[key] = counts.get(key, 0) + 1
+            first_seen.setdefault(key, idx)
+        selected_key = sorted(counts, key=lambda key: (-counts[key], first_seen[key]))[0]
+        return responsables_lookup.get(selected_key, assignments[first_seen[selected_key]])
+
+    def _preferred_assignment_for_group(
+        self, df: pd.DataFrame, group: Dict, responsables: List[str]
+    ) -> Optional[str]:
+        assignment_col = config.ASSIGNMENT_COLUMN
+        status_col = config.NORMALIZATION_STATUS_COLUMN
+        reviewer_col = config.NORMALIZATION_REVIEWER_COLUMN
+        ok_value = (config.NORMALIZATION_OK_VALUE or "OK").upper()
+        ok_reviewers = []
+        if status_col in df.columns and reviewer_col in df.columns:
+            for row_idx in group["indices"]:
+                status = (norm_str(df.at[row_idx, status_col]) or "").upper()
+                reviewer = norm_str(df.at[row_idx, reviewer_col])
+                if status == ok_value and reviewer:
+                    ok_reviewers.append(reviewer)
+        if ok_reviewers:
+            return self._most_common_assignment(ok_reviewers, responsables)
+
+        assignments = []
+        if assignment_col in df.columns:
+            for row_idx in group["indices"]:
+                current = norm_str(df.at[row_idx, assignment_col])
+                if current:
+                    assignments.append(current)
+        if assignments:
+            return self._most_common_assignment(assignments, responsables)
+        return None
 
     def _load_registro_for_normalizacion(self) -> pd.DataFrame:
         df = self.load_registro()
@@ -407,6 +465,10 @@ class RegistroService:
             if empty_status.any():
                 df.loc[empty_status, status_col] = config.NORMALIZATION_PENDING_VALUE
                 changed = True
+        if self._normalize_tesis_assignments(df):
+            changed = True
+        if self._clear_invalid_normalization_ok(df):
+            changed = True
         registro_id_col = config.REGISTRO_ID_COLUMN
         if registro_id_col in df.columns:
             df = df.drop(columns=[registro_id_col])
@@ -414,6 +476,51 @@ class RegistroService:
         if changed:
             self.save_registro(df)
         return df
+
+    def _normalize_tesis_assignments(self, df: pd.DataFrame) -> bool:
+        assignment_col = config.ASSIGNMENT_COLUMN
+        thesis_col = self._tesis_column(df)
+        if assignment_col not in df.columns or not thesis_col:
+            return False
+        changed = False
+        valid_mask = df.apply(self._is_valid_registro, axis=1)
+        for group in self._build_tesis_groups(df.loc[valid_mask].copy(), thesis_col):
+            responsible = self._preferred_assignment_for_group(
+                df, group, config.DEFAULT_ASSIGNMENT_PEOPLE
+            )
+            if not responsible:
+                continue
+            for row_idx in group["indices"]:
+                if (norm_str(df.at[row_idx, assignment_col]) or "") != responsible:
+                    df.at[row_idx, assignment_col] = responsible
+                    changed = True
+        return changed
+
+    def _clear_invalid_normalization_ok(self, df: pd.DataFrame) -> bool:
+        required = [
+            config.ASSIGNMENT_COLUMN,
+            config.NORMALIZATION_STATUS_COLUMN,
+            config.NORMALIZATION_REVIEWER_COLUMN,
+            config.NORMALIZATION_DATE_COLUMN,
+        ]
+        if any(col not in df.columns for col in required):
+            return False
+        changed = False
+        ok_value = (config.NORMALIZATION_OK_VALUE or "OK").upper()
+        pending_value = config.NORMALIZATION_PENDING_VALUE
+        for idx, row in df.iterrows():
+            status = (norm_str(row.get(config.NORMALIZATION_STATUS_COLUMN)) or "").upper()
+            if status != ok_value:
+                continue
+            assigned = (norm_str(row.get(config.ASSIGNMENT_COLUMN)) or "").lower()
+            reviewer = (norm_str(row.get(config.NORMALIZATION_REVIEWER_COLUMN)) or "").lower()
+            if assigned and reviewer == assigned:
+                continue
+            df.at[idx, config.NORMALIZATION_STATUS_COLUMN] = pending_value
+            df.at[idx, config.NORMALIZATION_REVIEWER_COLUMN] = ""
+            df.at[idx, config.NORMALIZATION_DATE_COLUMN] = ""
+            changed = True
+        return changed
 
     @staticmethod
     def _cedula_column(df: pd.DataFrame) -> Optional[str]:
@@ -429,6 +536,12 @@ class RegistroService:
 
     @staticmethod
     def _tesis_column(df: pd.DataFrame) -> Optional[str]:
+        def column_key(value: str) -> str:
+            text = fix_text_encoding(str(value), strip=True) or ""
+            normalized = unicodedata.normalize("NFD", text.lower())
+            normalized = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+            return normalized.replace(" ", "").replace("_", "")
+
         configured = getattr(config, "THESIS_PRIMARY_COLUMN", None)
         candidates = []
         if configured:
@@ -441,13 +554,19 @@ class RegistroService:
                 continue
             ordered_candidates.append(col)
             seen.add(col)
+        normalized_columns = {column_key(col): col for col in df.columns}
         for candidate in ordered_candidates:
             if candidate in df.columns:
                 return candidate
+            match = normalized_columns.get(column_key(candidate))
+            if match:
+                return match
         keywords = getattr(config, "THESIS_COLUMN_KEYWORDS", [])
+        normalized_keywords = {column_key(keyword) for keyword in keywords}
+        normalized_keywords.update({"tesis", "titulo", "tulo", "trabajogrado", "proyecto"})
         for col in df.columns:
-            lowered = col.lower()
-            if any(keyword in lowered for keyword in keywords):
+            lowered = column_key(col)
+            if any(keyword in lowered for keyword in normalized_keywords):
                 return col
         return None
 
@@ -478,12 +597,13 @@ class RegistroService:
         for row_idx, row in df.iterrows():
             thesis_value = norm_str(row.get(thesis_col))
             if thesis_value:
-                groups.setdefault(thesis_value, []).append(row_idx)
+                thesis_key = RegistroService._lookup_text(thesis_value)
+                groups.setdefault(thesis_key, {"tesis": thesis_value, "indices": []})["indices"].append(row_idx)
             else:
                 thesisless_rows.append(row_idx)
         grouped = [
-            {"tesis": tesis, "indices": indices, "students": len(indices), "sin_titulo": False}
-            for tesis, indices in groups.items()
+            {"tesis": data["tesis"], "indices": data["indices"], "students": len(data["indices"]), "sin_titulo": False}
+            for data in groups.values()
         ]
         for counter, row_idx in enumerate(thesisless_rows, 1):
             grouped.append(
@@ -565,8 +685,11 @@ class RegistroService:
         df = self._load_registro_for_normalizacion()
         return self._filter_by_responsable(df, responsable)
 
-    def get_registros_normalizacion_editables(self) -> pd.DataFrame:
-        return self._load_registro_for_normalizacion()
+    def get_registros_normalizacion_editables(self, responsable: Optional[str] = None) -> pd.DataFrame:
+        df = self._load_registro_for_normalizacion()
+        if responsable:
+            return self._filter_by_responsable(df, responsable)
+        return df
 
     def build_responsable_excel(self, responsable: str) -> bytes:
         df_resp = self.get_registros_por_responsable(responsable)
@@ -617,6 +740,9 @@ class RegistroService:
                 continue
             idx = index_lookup.get(uid)
             if idx is None:
+                continue
+            assigned_to = norm_str(df.at[idx, config.ASSIGNMENT_COLUMN])
+            if (assigned_to or "").lower() != (norm_str(responsable) or "").lower():
                 continue
             marked_ok = bool(item.get("ok"))
             target_status = config.NORMALIZATION_OK_VALUE if marked_ok else config.NORMALIZATION_PENDING_VALUE

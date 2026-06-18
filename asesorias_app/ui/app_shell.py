@@ -1593,7 +1593,7 @@ def _tab_normalizacion(tab, service: RegistroService, meta: dict) -> None:
                 if responsable:
                     try:
                         asignados_df = service.get_registros_por_responsable(responsable)
-                        editables_df = service.get_registros_normalizacion_editables()
+                        editables_df = service.get_registros_normalizacion_editables(responsable)
                     except Exception as exc:  # pragma: no cover
                         st.error(f"No se pudieron obtener los registros asignados: {exc}")
                     else:
