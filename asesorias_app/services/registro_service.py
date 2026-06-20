@@ -356,16 +356,34 @@ class RegistroService:
         if not thesis_groups:
             raise ValueError("No hay tesis para distribuir.")
 
+        print("DEBUG NORMALIZACION: boton distribuir presionado")
         counts = {resp: {"tesis": 0, "estudiantes": 0} for resp in responsables_clean}
-        reassigned_groups = []
         pending_groups = []
+        existing_groups = []
+        assigned_indices = set()
+        conflicted_groups = 0
         for group in thesis_groups:
             responsible = self._preferred_assignment_for_group(df, group, responsables_clean)
             if responsible:
-                df.loc[group["indices"], assignment_col] = responsible
-                reassigned_groups.append(group)
+                empty_indices = [
+                    row_idx
+                    for row_idx in group["indices"]
+                    if not norm_str(df.at[row_idx, assignment_col])
+                ]
+                if empty_indices:
+                    df.loc[empty_indices, assignment_col] = responsible
+                    assigned_indices.update(empty_indices)
+                    existing_groups.append({**group, "assigned_students": len(empty_indices)})
             else:
-                pending_groups.append(group)
+                existing_values = [
+                    norm_str(df.at[row_idx, assignment_col])
+                    for row_idx in group["indices"]
+                    if norm_str(df.at[row_idx, assignment_col])
+                ]
+                if existing_values:
+                    conflicted_groups += 1
+                else:
+                    pending_groups.append(group)
 
         rng = random.Random(seed)
         rng.shuffle(pending_groups)
@@ -373,17 +391,22 @@ class RegistroService:
         for idx, group in enumerate(pending_groups):
             responsible = responsables_clean[idx % reps]
             df.loc[group["indices"], assignment_col] = responsible
-            reassigned_groups.append(group)
+            assigned_indices.update(group["indices"])
+            group["assigned_students"] = group["students"]
+            existing_groups.append(group)
 
-        for group in reassigned_groups:
+        print("DEBUG NORMALIZACION: filas a asignar:", len(assigned_indices))
+        if conflicted_groups:
+            print("DEBUG NORMALIZACION: tesis con asignaciones existentes en conflicto:", conflicted_groups)
+        for group in existing_groups:
             responsible = norm_str(df.at[group["indices"][0], assignment_col]) or ""
             if responsible not in counts:
                 counts[responsible] = {"tesis": 0, "estudiantes": 0}
             counts[responsible]["tesis"] += 1
-            counts[responsible]["estudiantes"] += group["students"]
+            counts[responsible]["estudiantes"] += group.get("assigned_students", group["students"])
 
-        self.save_registro(df)
-        total_students = sum(group["students"] for group in thesis_groups)
+        if assigned_indices:
+            self.save_registro(df)
         thesis_without_title = sum(1 for group in thesis_groups if group["sin_titulo"])
         return {
             "total_valid": int(len(df_valid)),
@@ -392,9 +415,10 @@ class RegistroService:
             "seed": seed,
             "assignment_column": assignment_col,
             "thesis_column": thesis_col,
-            "total_thesis": len(thesis_groups),
-            "total_students": total_students,
+            "total_thesis": len(existing_groups),
+            "total_students": len(assigned_indices),
             "thesis_without_title": thesis_without_title,
+            "conflicted_thesis": conflicted_groups,
         }
 
     @staticmethod
@@ -416,19 +440,6 @@ class RegistroService:
         self, df: pd.DataFrame, group: Dict, responsables: List[str]
     ) -> Optional[str]:
         assignment_col = config.ASSIGNMENT_COLUMN
-        status_col = config.NORMALIZATION_STATUS_COLUMN
-        reviewer_col = config.NORMALIZATION_REVIEWER_COLUMN
-        ok_value = (config.NORMALIZATION_OK_VALUE or "OK").upper()
-        ok_reviewers = []
-        if status_col in df.columns and reviewer_col in df.columns:
-            for row_idx in group["indices"]:
-                status = (norm_str(df.at[row_idx, status_col]) or "").upper()
-                reviewer = norm_str(df.at[row_idx, reviewer_col])
-                if status == ok_value and reviewer:
-                    ok_reviewers.append(reviewer)
-        if ok_reviewers:
-            return self._most_common_assignment(ok_reviewers, responsables)
-
         assignments = []
         if assignment_col in df.columns:
             for row_idx in group["indices"]:
@@ -436,12 +447,14 @@ class RegistroService:
                 if current:
                     assignments.append(current)
         if assignments:
-            return self._most_common_assignment(assignments, responsables)
+            unique_assignments = {(norm_str(value) or "").lower(): value for value in assignments}
+            if len(unique_assignments) == 1:
+                return self._most_common_assignment(assignments, responsables)
         return None
 
     def _load_registro_for_normalizacion(self) -> pd.DataFrame:
         df = self.load_registro()
-        changed = False
+        print("DEBUG NORMALIZACION: no se debe escribir Asignado_a fuera del botón")
         required = [
             config.ASSIGNMENT_COLUMN,
             config.NORMALIZATION_STATUS_COLUMN,
@@ -452,75 +465,20 @@ class RegistroService:
         for col in required:
             if col not in df.columns:
                 df[col] = ""
-                changed = True
             else:
                 mask = df[col].isna()
                 if mask.any():
                     default_value = config.NORMALIZATION_PENDING_VALUE if col == config.NORMALIZATION_STATUS_COLUMN else ""
                     df.loc[mask, col] = default_value
-                    changed = True
         status_col = config.NORMALIZATION_STATUS_COLUMN
         if status_col in df.columns:
             empty_status = df[status_col].astype(str).str.strip() == ""
             if empty_status.any():
                 df.loc[empty_status, status_col] = config.NORMALIZATION_PENDING_VALUE
-                changed = True
-        if self._normalize_tesis_assignments(df):
-            changed = True
-        if self._clear_invalid_normalization_ok(df):
-            changed = True
         registro_id_col = config.REGISTRO_ID_COLUMN
         if registro_id_col in df.columns:
             df = df.drop(columns=[registro_id_col])
-            changed = True
-        if changed:
-            self.save_registro(df)
         return df
-
-    def _normalize_tesis_assignments(self, df: pd.DataFrame) -> bool:
-        assignment_col = config.ASSIGNMENT_COLUMN
-        thesis_col = self._tesis_column(df)
-        if assignment_col not in df.columns or not thesis_col:
-            return False
-        changed = False
-        valid_mask = df.apply(self._is_valid_registro, axis=1)
-        for group in self._build_tesis_groups(df.loc[valid_mask].copy(), thesis_col):
-            responsible = self._preferred_assignment_for_group(
-                df, group, config.DEFAULT_ASSIGNMENT_PEOPLE
-            )
-            if not responsible:
-                continue
-            for row_idx in group["indices"]:
-                if (norm_str(df.at[row_idx, assignment_col]) or "") != responsible:
-                    df.at[row_idx, assignment_col] = responsible
-                    changed = True
-        return changed
-
-    def _clear_invalid_normalization_ok(self, df: pd.DataFrame) -> bool:
-        required = [
-            config.ASSIGNMENT_COLUMN,
-            config.NORMALIZATION_STATUS_COLUMN,
-            config.NORMALIZATION_REVIEWER_COLUMN,
-            config.NORMALIZATION_DATE_COLUMN,
-        ]
-        if any(col not in df.columns for col in required):
-            return False
-        changed = False
-        ok_value = (config.NORMALIZATION_OK_VALUE or "OK").upper()
-        pending_value = config.NORMALIZATION_PENDING_VALUE
-        for idx, row in df.iterrows():
-            status = (norm_str(row.get(config.NORMALIZATION_STATUS_COLUMN)) or "").upper()
-            if status != ok_value:
-                continue
-            assigned = (norm_str(row.get(config.ASSIGNMENT_COLUMN)) or "").lower()
-            reviewer = (norm_str(row.get(config.NORMALIZATION_REVIEWER_COLUMN)) or "").lower()
-            if assigned and reviewer == assigned:
-                continue
-            df.at[idx, config.NORMALIZATION_STATUS_COLUMN] = pending_value
-            df.at[idx, config.NORMALIZATION_REVIEWER_COLUMN] = ""
-            df.at[idx, config.NORMALIZATION_DATE_COLUMN] = ""
-            changed = True
-        return changed
 
     @staticmethod
     def _cedula_column(df: pd.DataFrame) -> Optional[str]:
