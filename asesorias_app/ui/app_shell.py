@@ -957,19 +957,56 @@ def _tab_registro(tab, service: RegistroService, meta: dict):
             if pending_doc:
                 st.session_state["cedula"] = pending_doc
                 _load_existing_registro_for_edit(service, meta, lists)
-            st.subheader("Formulario de registro")
-            tutorial_pdf_path = config.BASE_DIR / "Tutorial Control Tesis.pdf"
+            tutorial_pdf_path = config.ASSETS_DIR / "Tutorial Control Tesis.pdf"
+            ridum_pdf_path = config.ASSETS_DIR / "Manual Procedimiento RIDUM.pdf"
+            st.markdown(
+                """
+<style>
+div[data-testid="stDownloadButton"][id*="registro_tutorial_pdf"] button,
+div[data-testid="stDownloadButton"][id*="registro_tutorial_pdf"] button:hover,
+div[data-testid="stDownloadButton"][id*="registro_tutorial_pdf"] button:focus,
+div[data-testid="stDownloadButton"][id*="registro_tutorial_pdf"] button:active,
+div[data-testid="stDownloadButton"][id*="registro_ridum_pdf"] button,
+div[data-testid="stDownloadButton"][id*="registro_ridum_pdf"] button:hover,
+div[data-testid="stDownloadButton"][id*="registro_ridum_pdf"] button:focus,
+div[data-testid="stDownloadButton"][id*="registro_ridum_pdf"] button:active {
+    width: 160px !important;
+    min-width: 160px !important;
+    max-width: 160px !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    padding: 0.35rem 0.75rem !important;
+    white-space: nowrap !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 0.9rem !important;
+    line-height: 1 !important;
+}
+</style>
+""",
+                unsafe_allow_html=True,
+            )
+            header_cols = st.columns([0.54, 0.23, 0.23], vertical_alignment="center")
+            with header_cols[0]:
+                st.subheader("Formulario de registro")
             if tutorial_pdf_path.exists():
-                tutorial_cols = st.columns([0.58, 0.42])
-                with tutorial_cols[0]:
-                    st.caption("Tutorial de uso de la aplicación disponible en PDF.")
-                with tutorial_cols[1]:
+                with header_cols[1]:
                     st.download_button(
-                        "Descargar tutorial PDF",
+                        "Descargar tutorial",
                         data=tutorial_pdf_path.read_bytes(),
                         file_name="Tutorial Control Tesis.pdf",
                         mime="application/pdf",
-                        use_container_width=True,
+                        key="registro_tutorial_pdf",
+                    )
+            if ridum_pdf_path.exists():
+                with header_cols[2]:
+                    st.download_button(
+                        "Descargar manual RIDUM",
+                        data=ridum_pdf_path.read_bytes(),
+                        file_name="Manual Procedimiento RIDUM.pdf",
+                        mime="application/pdf",
+                        key="registro_ridum_pdf",
                     )
             modal_data = st.session_state.get("search_modal")
             if modal_data:
