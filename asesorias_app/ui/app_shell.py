@@ -1484,7 +1484,38 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
             ]
 
 
-        st.caption(f"{len(filtered)} registros en total")
+        total_registros = len(filtered)
+        cedula_col = _find_row_key({col: None for col in filtered.columns}, ["Cédula", "Cedula"])
+        tesis_col = _find_row_key(
+            {col: None for col in filtered.columns},
+            ["Título_Trabajo_Grado", "Titulo_Trabajo_Grado"],
+        )
+        total_estudiantes = (
+            filtered[cedula_col].dropna().astype(str).str.strip().replace("", pd.NA).dropna().nunique()
+            if cedula_col
+            else 0
+        )
+        total_tesis = (
+            filtered[tesis_col].dropna().astype(str).str.strip().replace("", pd.NA).dropna().nunique()
+            if tesis_col
+            else 0
+        )
+        metric_cols = st.columns(3)
+        metric_items = [
+            (total_registros, "registros en total"),
+            (total_estudiantes, "estudiantes registrados"),
+            (total_tesis, "tesis registradas"),
+        ]
+        for metric_col, (metric_value, metric_label) in zip(metric_cols, metric_items):
+            with metric_col:
+                st.markdown(
+                    f"""
+<span style="font-size: 0.875rem; color: rgba(255,255,255,0.72);">
+    <strong style="color: #73d6b8; font-weight: 700;">{metric_value}</strong> {metric_label}
+</span>
+""",
+                    unsafe_allow_html=True,
+                )
         inline_idx = st.session_state.get("inline_edit_idx")
         if inline_idx is not None:
             st.markdown("### Editar registro seleccionado")
