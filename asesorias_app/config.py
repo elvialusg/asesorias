@@ -97,6 +97,7 @@ REGISTRO_COLUMNS = [
     "% similitud",
     "Aprobación_Similitud",
     "Paz_y_Salvo",
+    "Lista_Para_Publicar",
     ASSIGNMENT_COLUMN,
     NORMALIZATION_STATUS_COLUMN,
     NORMALIZATION_REVIEWER_COLUMN,
