@@ -465,6 +465,7 @@ def _shared_tesis_form_fields() -> List[str]:
         "% similitud",
         "Aprobación_Similitud",
         "Paz_y_Salvo",
+        "Lista_Para_Publicar",
     ]
 
 
@@ -530,6 +531,7 @@ def _all_widget_keys() -> List[str]:
         "aprob_sim",
         "obs",
         "paz_y_salvo",
+        "lista_para_publicar",
     ]
     n = int(st.session_state.get("asesorias_n", 1))
     for i in range(n):
@@ -564,6 +566,7 @@ def _reset_form(meta: dict) -> None:
     st.session_state["obs"] = ""
     st.session_state["similitud"] = 0
     st.session_state["paz_y_salvo"] = PLACEHOLDER_OPTION
+    st.session_state["lista_para_publicar"] = False
     st.session_state["ok_ref"] = PLACEHOLDER_OPTION
     st.session_state["ok_serv"] = PLACEHOLDER_OPTION
 
@@ -647,6 +650,9 @@ def _prefill_form_from_registro(row, row_index: int, meta: dict, lists: dict) ->
         [PLACEHOLDER_OPTION, "Virtual", "Presencial"],
     )
     _set_select_if_valid("paz_y_salvo", _row_get(registro, ["Paz_y_Salvo", "Paz y Salvo"]), PAZ_OPTIONS_WITH_PLACEHOLDER)
+    st.session_state["lista_para_publicar"] = (
+        _normalize_lookup_text(_row_get(registro, ["Lista_Para_Publicar"])).upper() == "SI"
+    )
     _set_select_if_valid("ok_ref", _row_get(registro, ["Ok_Referencistas", "OK Referencistas"]), STATUS_OPTIONS_WITH_PLACEHOLDER)
     _set_select_if_valid("ok_serv", _row_get(registro, ["OK_Servicios", "OK Servicios"]), STATUS_OPTIONS_WITH_PLACEHOLDER)
 
@@ -788,6 +794,9 @@ def _autofill_by_cedula(
     st.session_state["titulo"] = _clean_str(row.get("Título_Trabajo_Grado"))
     st.session_state["obs"] = _clean_str(row.get("Observaciones"))
     _set_select_state("paz_y_salvo", row.get("Paz_y_Salvo"))
+    st.session_state["lista_para_publicar"] = (
+        _normalize_lookup_text(row.get("Lista_Para_Publicar")) == "si"
+    )
     _set_select_state("rev_inicial", row.get("Revisión Inicial"))
     rev_pl_value = row.get("Revisión plantilla") or row.get("Revisión de Plantilla")
     _set_select_state("rev_plantilla", rev_pl_value)
@@ -890,7 +899,7 @@ def _render_tabs(service: RegistroService, meta: dict, user: AuthUser) -> None:
     raw_menu = [
         {"key": "register", "label": "Registrar tesis / Editar tesis", "feature": "register"},
         {"key": "consult", "label": "Consultar registros", "feature": "consult"},
-        {"key": "normalizacion", "label": "Normalización", "feature": "normalizacion"},
+        {"key": "normalizacion", "label": "Distribuir registros", "feature": "normalizacion"},
         {"key": "publicacion", "label": "Publicación", "feature": "publicacion"},
         {"key": "dashboard", "label": "Métricas", "feature": "dashboard"},
     ]
@@ -1198,6 +1207,10 @@ setTimeout(function(){{
                 PAZ_LABELS_WITH_PLACEHOLDER,
                 key="paz_y_salvo",
             )
+            lista_para_publicar = st.checkbox(
+                "Tesis lista para publicar, no requiere revisión adicional",
+                key="lista_para_publicar",
+            )
 
             fac_value = _selected_value(fac_display)
             prog_value = _selected_value(prog_display)
@@ -1225,6 +1238,7 @@ setTimeout(function(){{
                 "% similitud": int(similitud),
                 "Aprobación_Similitud": limpiar_valor_para_guardar(aprob_sim_value),
                 "Paz_y_Salvo": limpiar_valor_para_guardar(paz_y_salvo_value),
+                "Lista_Para_Publicar": "SI" if lista_para_publicar else "NO",
             }
 
             primary_doc_raw = (primary_doc_input or "").strip()
