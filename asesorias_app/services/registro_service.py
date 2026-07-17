@@ -49,6 +49,22 @@ def safe_sheet_value(value):
 
 class RegistroService:
     _write_lock = threading.RLock()
+    PERSONAL_FIELD_CANDIDATES = (
+        "Cédula",
+        "Cedula",
+        "Documento",
+        "Documento/Id",
+        "ID",
+        "Nombre_Usuario",
+        "Nombre Usuario",
+        "Nombre",
+        "Correo_Electronico",
+        "Correo electrónico",
+        "Correo electronico",
+        "Email",
+        "E-mail",
+        "Correo",
+    )
 
     def __init__(self, repository: Optional[ExcelRepository] = None) -> None:
         if repository is not None:
@@ -192,6 +208,51 @@ class RegistroService:
                 if key in df.columns and self._is_observation_field(key):
                     saved_df = self.load_registro()
                     print("DEBUG OBSERVACION - texto guardado:", saved_df.at[index_to_update, key])
+
+    def update_individual_by_index(self, index_to_update: int, changes: Dict) -> None:
+        """Actualiza exactamente una fila usando el índice real capturado."""
+        self.update_row_by_index(index_to_update, changes)
+
+    def update_thesis_group_by_indices(self, indices: List[int], shared_changes: Dict) -> int:
+        """Actualiza campos compartidos de tesis solo en los índices recibidos."""
+        target_indices = []
+        for idx in indices or []:
+            try:
+                target_indices.append(int(idx))
+            except (TypeError, ValueError):
+                raise ValueError("Los índices de tesis no son válidos.")
+        target_indices = list(dict.fromkeys(target_indices))
+        if not target_indices:
+            raise ValueError("No hay filas de tesis seleccionadas para actualizar.")
+
+        with self._write_lock:
+            df = self.load_registro()
+            missing = [idx for idx in target_indices if idx not in df.index]
+            if missing:
+                raise ValueError("Algunos registros seleccionados ya no existen. Recarga la búsqueda e intenta de nuevo.")
+
+            personal_columns = set()
+            for candidate in self.PERSONAL_FIELD_CANDIDATES:
+                match = self._match_existing_column(df.columns.tolist(), [candidate])
+                if match:
+                    personal_columns.add(match)
+
+            updated_any = False
+            for key, value in (shared_changes or {}).items():
+                field_col = self._match_existing_column(df.columns.tolist(), [key])
+                if not field_col or field_col in personal_columns:
+                    continue
+                safe_value = safe_sheet_value(value)
+                if not safe_value:
+                    continue
+                df[field_col] = df[field_col].astype("object")
+                df.loc[target_indices, field_col] = safe_value
+                updated_any = True
+
+            if not updated_any:
+                return 0
+            self.repo.save_registro(df)
+            return len(target_indices)
 
     def update_observacion_colaborativa(
         self,
