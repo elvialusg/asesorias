@@ -1746,6 +1746,51 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
 """,
                     unsafe_allow_html=True,
                 )
+        if st.session_state.pop("registro_delete_success", False):
+            st.success("Registro eliminado correctamente.")
+        if st.session_state.pop("registro_delete_error", False):
+            st.error("No se pudo eliminar el registro. Recarga la consulta e intenta de nuevo.")
+        def _clear_delete_state() -> None:
+            st.session_state.pop("registro_delete_target", None)
+            st.session_state.pop("registro_delete_confirm_open", None)
+
+        def _confirm_delete_content() -> None:
+            target = st.session_state.get("registro_delete_target") or {}
+            st.write("Estás a punto de eliminar permanentemente este registro. Esta acción no se puede deshacer.")
+            st.write(f"Nombre: {target.get('nombre', '')}")
+            st.write(f"Cédula: {target.get('cedula', '')}")
+            st.write(f"Título: {target.get('titulo', '')}")
+            confirm_cols = st.columns(2)
+            with confirm_cols[0]:
+                if _button("Cancelar", key="btn_cancel_delete_registro", type="secondary"):
+                    _clear_delete_state()
+                    _streamlit_rerun()
+            with confirm_cols[1]:
+                if _button("Confirmar eliminación", key="btn_confirm_delete_registro", type="primary"):
+                    try:
+                        index_to_delete = int(target.get("index"))
+                        current_df = service.load_registro()
+                        if index_to_delete not in current_df.index:
+                            raise ValueError("El registro seleccionado ya no existe.")
+                        service.delete_registro(index_to_delete)
+                    except Exception as exc:
+                        print("ERROR AL ELIMINAR REGISTRO EN CONSULTA:", repr(exc))
+                        st.session_state["registro_delete_error"] = True
+                    else:
+                        st.session_state["registro_delete_success"] = True
+                    _clear_delete_state()
+                    _streamlit_rerun()
+
+        if st.session_state.get("registro_delete_confirm_open"):
+            if hasattr(st, "dialog"):
+                @st.dialog("Confirmar eliminación")
+                def _confirmar_eliminacion_dialog():
+                    _confirm_delete_content()
+
+                _confirmar_eliminacion_dialog()
+            else:
+                st.warning("Confirmar eliminación")
+                _confirm_delete_content()
         inline_idx = st.session_state.get("inline_edit_idx")
         if inline_idx is not None:
             st.markdown("### Editar registro seleccionado")
@@ -1817,7 +1862,52 @@ def _tab_consulta(tab, service: RegistroService, meta: dict):
             if "_Fecha_sort" in df_to_show.columns:
                 df_to_show = df_to_show.drop(columns="_Fecha_sort")
             if not df_to_show.empty:
-                st.dataframe(df_to_show, use_container_width=True, hide_index=True, height=220)
+                delete_table = df_to_show.copy()
+                delete_table["_registro_real_index"] = delete_table.index
+                delete_table["Eliminar"] = False
+                edited_delete_table = st.data_editor(
+                    delete_table,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=220,
+                    disabled=[col for col in delete_table.columns if col != "Eliminar"],
+                    column_config={
+                        "_registro_real_index": None,
+                        "Eliminar": st.column_config.CheckboxColumn(
+                            "Eliminar",
+                            help="Selecciona el registro que deseas eliminar",
+                            default=False,
+                        ),
+                    },
+                    key="consulta_delete_editor",
+                )
+                delete_cols = st.columns([0.24, 0.76])
+                with delete_cols[0]:
+                    delete_clicked = _button("Eliminar registro", key="btn_delete_registro_consulta", type="secondary")
+                if delete_clicked:
+                    selected_rows = edited_delete_table[
+                        edited_delete_table["Eliminar"].fillna(False)
+                    ]
+                    if selected_rows.empty:
+                        st.warning("Selecciona un registro para eliminar.")
+                    elif len(selected_rows) > 1:
+                        st.warning("Selecciona únicamente un registro para eliminar.")
+                    else:
+                        selected_row = selected_rows.iloc[0]
+                        real_index = int(selected_row["_registro_real_index"])
+                        st.session_state["registro_delete_target"] = {
+                            "index": real_index,
+                            "nombre": _clean_str(selected_row.get("Nombre_Usuario", "")),
+                            "cedula": _clean_str(selected_row.get("Cédula", selected_row.get("Cedula", ""))),
+                            "titulo": _clean_str(
+                                selected_row.get(
+                                    "Título_Trabajo_Grado",
+                                    selected_row.get("Titulo_Trabajo_Grado", ""),
+                                )
+                            ),
+                        }
+                        st.session_state["registro_delete_confirm_open"] = True
+                        _streamlit_rerun()
             elif inline_idx is not None:
                 st.info("El registro seleccionado se está mostrando en el editor superior.")
         else:
