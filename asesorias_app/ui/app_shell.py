@@ -1394,6 +1394,26 @@ setTimeout(function(){{
                 format_func=_format_list_label,
                 key="aprob_sim",
             )
+            st.markdown(
+                """
+<style>
+.st-key-obs textarea,
+div[data-testid="stTextArea"] textarea[aria-label="Observaciones"] {
+    color: #000000 !important;
+    background-color: #ffffff !important;
+    -webkit-text-fill-color: #000000 !important;
+    caret-color: #000000 !important;
+}
+.st-key-obs textarea::placeholder,
+div[data-testid="stTextArea"] textarea[aria-label="Observaciones"]::placeholder {
+    color: #4a4a4a !important;
+    -webkit-text-fill-color: #4a4a4a !important;
+    opacity: 1 !important;
+}
+</style>
+""",
+                unsafe_allow_html=True,
+            )
             obs = st.text_area("Observaciones", height=120, key="obs")
             st.session_state.setdefault("paz_y_salvo", PLACEHOLDER_OPTION)
             paz_y_salvo = _select_with_display(
